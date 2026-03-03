@@ -262,6 +262,17 @@ async function runStartup(
 
   console.log(chalk.dim(`Config: ${config.configPath}\n`));
 
+  // Auto-open browser to orchestrator session page (dashboard root is empty on first start)
+  if (opts?.dashboard !== false) {
+    const orchestratorUrl = `http://localhost:${port}/sessions/${sessionId}`;
+    setTimeout(() => {
+      const browser = spawn("open", [orchestratorUrl], { stdio: "ignore" });
+      browser.on("error", () => {
+        // Best-effort — ignore if browser can't be opened
+      });
+    }, 3000);
+  }
+
   // Keep dashboard process alive if it was started
   if (dashboardProcess) {
     dashboardProcess.on("exit", (code) => {
