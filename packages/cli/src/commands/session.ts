@@ -4,6 +4,7 @@ import { loadConfig, SessionNotRestorableError, WorkspaceMissingError } from "@c
 import { git, getTmuxActivity } from "../lib/shell.js";
 import { formatAge } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { getSCM } from "../lib/plugins.js";
 
 export function registerSession(program: Command): void {
   const session = program.command("session").description("Session management (ls, kill, cleanup)");
@@ -178,6 +179,74 @@ export function registerSession(program: Command): void {
         } else {
           console.error(chalk.red(`Failed to restore session ${sessionName}: ${err}`));
         }
+        process.exit(1);
+      }
+    });
+
+  session
+    .command("link")
+    .description("Link a session to an existing PR")
+    .argument("<session>", "Session name to link")
+    .requiredOption("--pr <number>", "PR number to link")
+    .action(async (sessionName: string, opts: { pr: string }) => {
+      const config = loadConfig();
+      const sm = await getSessionManager(config);
+
+      const session = await sm.get(sessionName);
+      if (!session) {
+        console.error(chalk.red(`Session ${sessionName} not found`));
+        process.exit(1);
+      }
+
+      const project = config.projects[session.projectId];
+      if (!project) {
+        console.error(chalk.red(`Project ${session.projectId} not found in config`));
+        process.exit(1);
+      }
+
+      const prNumber = parseInt(opts.pr, 10);
+      if (isNaN(prNumber) || prNumber <= 0) {
+        console.error(chalk.red(`Invalid PR number: ${opts.pr}`));
+        process.exit(1);
+      }
+
+      // Look up the PR via SCM plugin to get the full URL and validate it exists
+      const scm = getSCM(config, session.projectId);
+      const [owner, repo] = project.repo.split("/");
+      if (!owner || !repo) {
+        console.error(chalk.red(`Invalid repo format "${project.repo}", expected "owner/repo"`));
+        process.exit(1);
+      }
+
+      try {
+        // Build a minimal PRInfo to query the PR state
+        const prInfo = {
+          number: prNumber,
+          url: `https://github.com/${project.repo}/pull/${prNumber}`,
+          title: "",
+          owner,
+          repo,
+          branch: session.branch ?? "",
+          baseBranch: "",
+          isDraft: false,
+        };
+
+        // Validate the PR exists by fetching its state
+        const prState = await scm.getPRState(prInfo);
+
+        // Persist the PR URL in session metadata
+        const { updateMetadata, getSessionsDir } = await import("@composio/ao-core");
+        const sessionsDir = getSessionsDir(config.configPath, project.path);
+        updateMetadata(sessionsDir, sessionName, { pr: prInfo.url });
+
+        console.log(
+          chalk.green(`\nLinked session ${sessionName} to PR #${prNumber} (${prState})`),
+        );
+        console.log(chalk.dim(`  URL: ${prInfo.url}`));
+      } catch (err) {
+        console.error(
+          chalk.red(`Failed to link PR #${prNumber}: ${err instanceof Error ? err.message : String(err)}`),
+        );
         process.exit(1);
       }
     });

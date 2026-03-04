@@ -52,10 +52,16 @@ async function gatherSessionInfo(
   const prUrl = session.metadata["pr"] ?? null;
   const issue = session.issueId;
 
-  // Get live branch from worktree if available
+  // Get live branch from worktree if available — also update session.branch
+  // so that detectPR() below searches the correct branch (not the stale one
+  // recorded at spawn time, which may differ if the agent checked out an
+  // existing branch with an open PR).
   if (session.workspacePath) {
     const liveBranch = await git(["branch", "--show-current"], session.workspacePath);
-    if (liveBranch) branch = liveBranch;
+    if (liveBranch) {
+      branch = liveBranch;
+      session.branch = liveBranch;
+    }
   }
 
   // Get last activity time from tmux
