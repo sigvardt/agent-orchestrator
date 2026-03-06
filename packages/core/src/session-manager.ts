@@ -60,17 +60,19 @@ import {
   generateConfigHash,
   validateAndStoreOrigin,
 } from "./paths.js";
+import { asValidOpenCodeSessionId } from "./opencode-session-id.js";
 
 const execFileAsync = promisify(execFile);
 const OPENCODE_DISCOVERY_TIMEOUT_MS = 2_000;
 const OPENCODE_INTERACTIVE_DISCOVERY_TIMEOUT_MS = 10_000;
-const OPENCODE_SESSION_ID_RE = /^ses_[A-Za-z0-9_-]+$/;
 
-function asValidOpenCodeSessionId(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return undefined;
-  return OPENCODE_SESSION_ID_RE.test(trimmed) ? trimmed : undefined;
+function scoreOpenCodeUpdated(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return -1;
 }
 
 function errorIncludesSessionNotFound(err: unknown): boolean {
@@ -115,11 +117,13 @@ async function discoverOpenCodeSessionIdsByTitle(
     const parsed = safeJsonParse<Array<Record<string, unknown>>>(stdout);
     if (!parsed) return [];
     const title = `AO:${sessionId}`;
-    const candidates = parsed.filter((entry) => {
-      const candidateTitle = typeof entry["title"] === "string" ? entry["title"] : "";
-      const candidateId = typeof entry["id"] === "string" ? entry["id"] : "";
-      return candidateTitle === title && candidateId.length > 0;
-    });
+    const candidates = parsed
+      .filter((entry) => {
+        const candidateTitle = typeof entry["title"] === "string" ? entry["title"] : "";
+        const candidateId = typeof entry["id"] === "string" ? entry["id"] : "";
+        return candidateTitle === title && candidateId.length > 0;
+      })
+      .sort((a, b) => scoreOpenCodeUpdated(b["updated"]) - scoreOpenCodeUpdated(a["updated"]));
 
     return candidates
       .map((entry) => asValidOpenCodeSessionId(entry["id"]))

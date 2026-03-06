@@ -61,6 +61,7 @@ export type { OrchestratorPromptConfig } from "./orchestrator-prompt.js";
 
 // Shared utilities
 export { shellEscape, escapeAppleScript, validateUrl, readLastJsonlEntry } from "./utils.js";
+export { asValidOpenCodeSessionId } from "./opencode-session-id.js";
 
 // Path utilities — hash-based directory structure
 export {

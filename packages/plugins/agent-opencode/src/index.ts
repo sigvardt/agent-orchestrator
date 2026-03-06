@@ -1,5 +1,6 @@
 import {
   shellEscape,
+  asValidOpenCodeSessionId,
   type Agent,
   type AgentSessionInfo,
   type AgentLaunchConfig,
@@ -18,15 +19,6 @@ interface OpenCodeSessionListEntry {
   id: string;
   title?: string;
   updated?: string;
-}
-
-const OPENCODE_SESSION_ID_RE = /^ses_[A-Za-z0-9_-]+$/;
-
-function asValidOpenCodeSessionId(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return undefined;
-  return OPENCODE_SESSION_ID_RE.test(trimmed) ? trimmed : undefined;
 }
 
 function parseSessionList(raw: string): OpenCodeSessionListEntry[] {

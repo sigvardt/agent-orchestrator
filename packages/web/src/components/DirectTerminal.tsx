@@ -56,6 +56,7 @@ export function DirectTerminal({
   const [status, setStatus] = useState<"connecting" | "connected" | "error">("connecting");
   const [error, setError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [reloadError, setReloadError] = useState<string | null>(null);
   const [resolvedReloadCommand, setResolvedReloadCommand] = useState<string | null>(null);
 
   // Update URL when fullscreen changes
@@ -74,6 +75,7 @@ export function DirectTerminal({
 
   async function handleReload(): Promise<void> {
     if (!isOpenCodeSession || reloading) return;
+    setReloadError(null);
     setReloading(true);
     try {
       let commandToSend = resolvedReloadCommand ?? reloadCommand;
@@ -96,11 +98,16 @@ export function DirectTerminal({
         setResolvedReloadCommand(commandToSend);
       }
 
-      await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send`, {
+      const sendRes = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: commandToSend }),
       });
+      if (!sendRes.ok) {
+        throw new Error(`Failed to send reload command: ${sendRes.status}`);
+      }
+    } catch (err) {
+      setReloadError(err instanceof Error ? err.message : "Failed to reload OpenCode session");
     } finally {
       setReloading(false);
     }
@@ -589,6 +596,14 @@ export function DirectTerminal({
               </>
             )}
           </button>
+        ) : null}
+        {reloadError ? (
+          <span
+            className="max-w-[40ch] truncate text-[10px] font-medium text-[var(--color-status-error)]"
+            title={reloadError}
+          >
+            {reloadError}
+          </span>
         ) : null}
         <button
           onClick={() => setFullscreen(!fullscreen)}
