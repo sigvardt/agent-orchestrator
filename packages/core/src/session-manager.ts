@@ -917,14 +917,6 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     }
 
     const existingOrchestrator = await get(sessionId);
-    const reusableOpenCodeSessionId =
-      plugins.agent.name === "opencode" && orchestratorSessionStrategy === "reuse"
-        ? await resolveOpenCodeSessionReuse({
-            sessionsDir,
-            criteria: { sessionId },
-            strategy: "reuse",
-          })
-        : undefined;
     if (existingOrchestrator?.runtimeHandle) {
       const existingAlive = await plugins.runtime
         .isAlive(existingOrchestrator.runtimeHandle)
@@ -936,6 +928,19 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         await plugins.runtime.destroy(existingOrchestrator.runtimeHandle).catch(() => undefined);
       }
     }
+
+    const reusableOpenCodeSessionId =
+      plugins.agent.name === "opencode" && orchestratorSessionStrategy === "reuse"
+        ? await resolveOpenCodeSessionReuse({
+            sessionsDir,
+            criteria: { sessionId },
+            strategy: "reuse",
+          })
+        : undefined;
+    const configuredSubagent =
+      typeof project.agentConfig?.["subagent"] === "string"
+        ? project.agentConfig["subagent"]
+        : undefined;
 
     if (plugins.agent.name === "opencode" && orchestratorSessionStrategy === "delete") {
       await resolveOpenCodeSessionReuse({
@@ -960,6 +965,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       permissions: "skip" as const,
       model: project.agentConfig?.orchestratorModel ?? project.agentConfig?.model,
       systemPromptFile,
+      subagent: configuredSubagent,
     };
 
     const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
@@ -1592,6 +1598,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     // 7. Get launch command — try restore command first, fall back to fresh launch
     let launchCommand: string;
+    const configuredSubagent =
+      typeof project.agentConfig?.["subagent"] === "string"
+        ? project.agentConfig["subagent"]
+        : undefined;
     const agentLaunchConfig = {
       sessionId,
       projectConfig: {
@@ -1609,6 +1619,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         raw["role"] === "orchestrator"
           ? (project.agentConfig?.orchestratorModel ?? project.agentConfig?.model)
           : project.agentConfig?.model,
+      subagent: configuredSubagent,
     };
 
     if (plugins.agent.getRestoreCommand) {

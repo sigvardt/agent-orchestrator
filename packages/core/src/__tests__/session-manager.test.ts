@@ -2216,6 +2216,28 @@ describe("spawnOrchestrator", () => {
   });
 
   it("reuses an existing orchestrator session when strategy is reuse", async () => {
+    const listLogPath = join(tmpDir, "opencode-list-orchestrator-reuse.log");
+    const mockBin = join(tmpDir, "mock-bin-reuse-no-list");
+    mkdirSync(mockBin, { recursive: true });
+    const scriptPath = join(mockBin, "opencode");
+    writeFileSync(
+      scriptPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'if [[ "$1" == "session" && "$2" == "list" ]]; then',
+        `  printf '%s\\n' "$*" >> '${listLogPath.replace(/'/g, "'\\''")}'`,
+        "  printf '[]\\n'",
+        "  exit 0",
+        "fi",
+        "exit 0",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    chmodSync(scriptPath, 0o755);
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
     const opencodeAgent: Agent = {
       ...mockAgent,
       name: "opencode",
@@ -2261,6 +2283,7 @@ describe("spawnOrchestrator", () => {
     expect(session.id).toBe("app-orchestrator");
     expect(mockRuntime.create).not.toHaveBeenCalled();
     expect(mockRuntime.destroy).not.toHaveBeenCalled();
+    expect(existsSync(listLogPath)).toBe(false);
   });
 
   it("reuses mapped OpenCode session id when strategy is reuse and runtime is restarted", async () => {
@@ -2578,6 +2601,31 @@ describe("spawnOrchestrator", () => {
 
     expect(mockAgent.getLaunchCommand).toHaveBeenCalledWith(
       expect.objectContaining({ model: "orchestrator-model" }),
+    );
+  });
+
+  it("forwards configured subagent to orchestrator launch", async () => {
+    const configWithSubagent: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          agentConfig: {
+            subagent: "oracle",
+          },
+        },
+      },
+    };
+
+    const sm = createSessionManager({
+      config: configWithSubagent,
+      registry: mockRegistry,
+    });
+    await sm.spawnOrchestrator({ projectId: "my-app" });
+
+    expect(mockAgent.getLaunchCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ subagent: "oracle" }),
     );
   });
 
@@ -2972,6 +3020,39 @@ describe("restore", () => {
 
     expect(mockAgent.getLaunchCommand).toHaveBeenCalledWith(
       expect.objectContaining({ model: "orchestrator-model" }),
+    );
+  });
+
+  it("forwards configured subagent when restoring sessions", async () => {
+    const wsPath = join(tmpDir, "ws-app-restore-subagent");
+    mkdirSync(wsPath, { recursive: true });
+
+    const configWithSubagent: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          agentConfig: {
+            subagent: "oracle",
+          },
+        },
+      },
+    };
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "feat/TEST-SUBAGENT",
+      status: "killed",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+
+    const sm = createSessionManager({ config: configWithSubagent, registry: mockRegistry });
+    await sm.restore("app-1");
+
+    expect(mockAgent.getLaunchCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ subagent: "oracle" }),
     );
   });
 
