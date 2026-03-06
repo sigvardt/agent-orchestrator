@@ -269,18 +269,11 @@ describe("review-check command", () => {
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("Fix prompt sent");
-
-    // Should have sent C-c, C-u, message, Enter
-    expect(mockExec).toHaveBeenCalledWith("tmux", ["send-keys", "-t", "app-1", "C-c"]);
-    expect(mockExec).toHaveBeenCalledWith("tmux", ["send-keys", "-t", "app-1", "C-u"]);
-    expect(mockExec).toHaveBeenCalledWith("tmux", [
-      "send-keys",
-      "-t",
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
       "app-1",
-      "-l",
       expect.stringContaining("review comments"),
-    ]);
-    expect(mockExec).toHaveBeenCalledWith("tmux", ["send-keys", "-t", "app-1", "Enter"]);
+    );
+    expect(mockExec).not.toHaveBeenCalled();
   });
 
   it("handles gh returning null (API failure)", async () => {

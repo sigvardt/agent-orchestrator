@@ -117,6 +117,16 @@ const PR_TRACKING_STATUSES: ReadonlySet<string> = new Set([
   "mergeable",
 ]);
 
+const SEND_RESTORE_READY_TIMEOUT_MS = 5_000;
+const SEND_RESTORE_READY_POLL_MS = 500;
+const SEND_CONFIRMATION_ATTEMPTS = 3;
+const SEND_CONFIRMATION_POLL_MS = 500;
+const SEND_CONFIRMATION_OUTPUT_LINES = 20;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Validate and normalize a status string. */
 function validateStatus(raw: string | undefined): SessionStatus {
   // Bash scripts write "starting" — treat as "working"
@@ -994,44 +1004,186 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   }
 
   async function send(sessionId: SessionId, message: string): Promise<void> {
-    // Find the session in any project's sessions directory
-    let raw: Record<string, string> | null = null;
-    for (const project of Object.values(config.projects)) {
-      const sessionsDir = getProjectSessionsDir(project);
-      const metadata = readMetadataRaw(sessionsDir, sessionId);
-      if (metadata) {
-        raw = metadata;
-        break;
-      }
+    const located = findSessionRecord(sessionId);
+    if (!located) {
+      throw new Error(`Session ${sessionId} not found`);
     }
 
-    if (!raw) throw new Error(`Session ${sessionId} not found`);
+    const { raw, project } = located;
+    const parsedHandle = raw["runtimeHandle"]
+      ? safeJsonParse<RuntimeHandle>(raw["runtimeHandle"])
+      : null;
+    const runtimeName = parsedHandle?.runtimeName ?? project.runtime ?? config.defaults.runtime;
+    const agentName = raw["agent"] ?? project.agent ?? config.defaults.agent;
 
-    // Build handle: use stored runtimeHandle, or fall back to session ID as tmux session name
-    let handle: RuntimeHandle;
-    if (raw["runtimeHandle"]) {
-      const parsed = safeJsonParse<RuntimeHandle>(raw["runtimeHandle"]);
-      if (!parsed) {
-        throw new Error(`Corrupted runtime handle for session ${sessionId}`);
-      }
-      handle = parsed;
-    } else {
-      // Sessions created by bash scripts don't have runtimeHandle — use session ID as tmux handle
-      handle = { id: sessionId, runtimeName: config.defaults.runtime, data: {} };
-    }
-
-    // Prefer handle.runtimeName to find the correct plugin
-    const project = config.projects[raw["project"] ?? ""];
-    const runtimePlugin = registry.get<Runtime>(
-      "runtime",
-      handle.runtimeName ??
-        (project ? (project.runtime ?? config.defaults.runtime) : config.defaults.runtime),
-    );
+    const runtimePlugin = registry.get<Runtime>("runtime", runtimeName);
     if (!runtimePlugin) {
       throw new Error(`No runtime plugin for session ${sessionId}`);
     }
 
-    await runtimePlugin.sendMessage(handle, message);
+    const agentPlugin = registry.get<Agent>("agent", agentName);
+    if (!agentPlugin) {
+      throw new Error(`No agent plugin for session ${sessionId}`);
+    }
+
+    const captureOutput = async (handle: RuntimeHandle): Promise<string> => {
+      try {
+        return (await runtimePlugin.getOutput(handle, SEND_CONFIRMATION_OUTPUT_LINES)) ?? "";
+      } catch {
+        return "";
+      }
+    };
+
+    const detectActivityFromOutput = (output: string) => {
+      if (!output) return null;
+      try {
+        return agentPlugin.detectActivity(output);
+      } catch {
+        return null;
+      }
+    };
+
+    const hasQueuedMessage = (output: string): boolean => {
+      return output.includes("Press up to edit queued messages");
+    };
+
+    const waitForRestoredSession = async (restoredSession: Session): Promise<void> => {
+      const handle = restoredSession.runtimeHandle;
+      if (!handle) {
+        return;
+      }
+
+      const deadline = Date.now() + SEND_RESTORE_READY_TIMEOUT_MS;
+      while (true) {
+        const [runtimeAlive, processRunning, output] = await Promise.all([
+          runtimePlugin.isAlive(handle).catch(() => true),
+          agentPlugin.isProcessRunning(handle).catch(() => true),
+          captureOutput(handle),
+        ]);
+
+        if (runtimeAlive && (processRunning || output.trim().length > 0)) {
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          return;
+        }
+
+        await sleep(SEND_RESTORE_READY_POLL_MS);
+      }
+    };
+
+    const restoreForDelivery = async (reason: string, session: Session): Promise<Session> => {
+      if (NON_RESTORABLE_STATUSES.has(session.status)) {
+        throw new Error(`Cannot send to session ${sessionId}: ${reason}`);
+      }
+
+      try {
+        const restored = await restore(sessionId);
+        await waitForRestoredSession(restored);
+        return restored;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`Cannot send to session ${sessionId}: ${reason} (${detail})`);
+      }
+    };
+
+    const prepareSession = async (forceRestore = false): Promise<Session> => {
+      const current = await get(sessionId);
+      if (!current) {
+        throw new Error(`Session ${sessionId} not found`);
+      }
+
+      const handle =
+        current.runtimeHandle ??
+        ({
+          id: sessionId,
+          runtimeName,
+          data: {},
+        } satisfies RuntimeHandle);
+      const normalized = current.runtimeHandle ? current : { ...current, runtimeHandle: handle };
+
+      if (forceRestore || isRestorable(normalized)) {
+        return restoreForDelivery(
+          forceRestore ? "session needed to be restarted before delivery" : "session is not running",
+          normalized,
+        );
+      }
+
+      const [runtimeAlive, processRunning] = await Promise.all([
+        runtimePlugin.isAlive(handle).catch(() => true),
+        agentPlugin.isProcessRunning(handle).catch(() => true),
+      ]);
+
+      if (!runtimeAlive || !processRunning) {
+        return restoreForDelivery(
+          !runtimeAlive ? "runtime is not alive" : "agent process is not running",
+          normalized,
+        );
+      }
+
+      return normalized;
+    };
+
+    const sendWithConfirmation = async (session: Session): Promise<void> => {
+      const handle = session.runtimeHandle;
+      if (!handle) {
+        throw new Error(`Session ${sessionId} has no runtime handle`);
+      }
+
+      const baselineOutput = await captureOutput(handle);
+      const baselineActivity = detectActivityFromOutput(baselineOutput) ?? session.activity;
+
+      await runtimePlugin.sendMessage(handle, message);
+
+      for (let attempt = 1; attempt <= SEND_CONFIRMATION_ATTEMPTS; attempt++) {
+        const output = await captureOutput(handle);
+        const activity = detectActivityFromOutput(output) ?? session.activity;
+        const delivered =
+          hasQueuedMessage(output) ||
+          (output.length > 0 && output !== baselineOutput) ||
+          (baselineActivity !== "active" && activity === "active") ||
+          (baselineActivity !== "waiting_input" && activity === "waiting_input");
+
+        if (delivered) {
+          return;
+        }
+
+        if (attempt < SEND_CONFIRMATION_ATTEMPTS) {
+          await sleep(SEND_CONFIRMATION_POLL_MS);
+        }
+      }
+
+      throw new Error(`Message to session ${sessionId} could not be confirmed`);
+    };
+
+    let prepared = await prepareSession();
+
+    try {
+      await sendWithConfirmation(prepared);
+    } catch (err) {
+      const shouldRetryWithRestore =
+        !(err instanceof Error && err.message.includes("could not be confirmed")) &&
+        prepared.restoredAt === undefined &&
+        !NON_RESTORABLE_STATUSES.has(prepared.status);
+
+      if (!shouldRetryWithRestore) {
+        if (err instanceof Error) {
+          throw err;
+        }
+        throw new Error(String(err));
+      }
+
+      prepared = await prepareSession(true);
+      try {
+        await sendWithConfirmation(prepared);
+      } catch (retryErr) {
+        if (retryErr instanceof Error) {
+          throw retryErr;
+        }
+        throw new Error(String(retryErr));
+      }
+    }
   }
 
   async function claimPR(

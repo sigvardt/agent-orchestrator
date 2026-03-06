@@ -22,6 +22,8 @@ const {
   mockSessionManager,
   mockWaitForPortAndOpen,
   mockSpawn,
+  mockEnsureLifecycleWorker,
+  mockStopLifecycleWorker,
 } = vi.hoisted(() => ({
   mockExec: vi.fn(),
   mockExecSilent: vi.fn(),
@@ -38,6 +40,8 @@ const {
   },
   mockWaitForPortAndOpen: vi.fn().mockResolvedValue(undefined),
   mockSpawn: vi.fn(),
+  mockEnsureLifecycleWorker: vi.fn(),
+  mockStopLifecycleWorker: vi.fn(),
 }));
 
 vi.mock("../../src/lib/shell.js", () => ({
@@ -74,6 +78,11 @@ vi.mock("@composio/ao-core", async (importOriginal) => {
 
 vi.mock("../../src/lib/create-session-manager.js", () => ({
   getSessionManager: async (): Promise<SessionManager> => mockSessionManager as SessionManager,
+}));
+
+vi.mock("../../src/lib/lifecycle-service.js", () => ({
+  ensureLifecycleWorker: (...args: unknown[]) => mockEnsureLifecycleWorker(...args),
+  stopLifecycleWorker: (...args: unknown[]) => mockStopLifecycleWorker(...args),
 }));
 
 vi.mock("../../src/lib/web-dir.js", () => ({
@@ -146,6 +155,16 @@ beforeEach(() => {
   mockExecSilent.mockResolvedValue(null);
   mockWaitForPortAndOpen.mockReset();
   mockWaitForPortAndOpen.mockResolvedValue(undefined);
+  mockEnsureLifecycleWorker.mockReset();
+  mockEnsureLifecycleWorker.mockResolvedValue({
+    running: true,
+    started: true,
+    pid: 12345,
+    pidFile: "/tmp/lifecycle-worker.pid",
+    logFile: "/tmp/lifecycle-worker.log",
+  });
+  mockStopLifecycleWorker.mockReset();
+  mockStopLifecycleWorker.mockResolvedValue(true);
   mockSpawn.mockClear();
 });
 
@@ -560,6 +579,10 @@ describe("start command — browser open waits for port", () => {
     expect(port).toBe(3000);
     expect(url).toContain("/sessions/app-orchestrator");
     expect(signal).toBeInstanceOf(AbortSignal);
+    expect(mockEnsureLifecycleWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ configPath: expect.any(String) }),
+      "my-app",
+    );
   });
 
   it("skips browser open with --no-dashboard", async () => {
@@ -568,6 +591,7 @@ describe("start command — browser open waits for port", () => {
     await program.parseAsync(["node", "test", "start", "--no-dashboard", "--no-orchestrator"]);
 
     expect(mockWaitForPortAndOpen).not.toHaveBeenCalled();
+    expect(mockEnsureLifecycleWorker).not.toHaveBeenCalled();
   });
 });
 
@@ -585,6 +609,10 @@ describe("stop command", () => {
     await program.parseAsync(["node", "test", "stop"]);
 
     expect(mockSessionManager.kill).toHaveBeenCalledWith("app-orchestrator");
+    expect(mockStopLifecycleWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ configPath: expect.any(String) }),
+      "my-app",
+    );
     const output = vi
       .mocked(console.log)
       .mock.calls.map((c) => c.join(" "))
@@ -600,6 +628,10 @@ describe("stop command", () => {
     await program.parseAsync(["node", "test", "stop"]);
 
     expect(mockSessionManager.kill).not.toHaveBeenCalled();
+    expect(mockStopLifecycleWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ configPath: expect.any(String) }),
+      "my-app",
+    );
     const output = vi
       .mocked(console.log)
       .mock.calls.map((c) => c.join(" "))

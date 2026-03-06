@@ -2,16 +2,18 @@ import chalk from "chalk";
 import ora from "ora";
 import type { Command } from "commander";
 import { loadConfig } from "@composio/ao-core";
-import { exec, gh } from "../lib/shell.js";
+import { gh } from "../lib/shell.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 
 interface ReviewInfo {
   sessionId: string;
-  tmuxTarget: string;
   prNumber: string;
   pendingComments: number;
   reviewDecision: string | null;
 }
+
+const REVIEW_FIX_PROMPT =
+  "There are review comments on your PR. Check with `gh pr view --comments` and `gh api` for inline comments. Address each one, push fixes, and reply.";
 
 async function checkPRReviews(
   repo: string,
@@ -93,7 +95,6 @@ export function registerReviewCheck(program: Command): void {
           if (pendingComments > 0 || reviewDecision === "CHANGES_REQUESTED") {
             results.push({
               sessionId: session.id,
-              tmuxTarget: session.runtimeHandle?.id ?? session.id,
               prNumber: prNum,
               pendingComments,
               reviewDecision,
@@ -128,16 +129,7 @@ export function registerReviewCheck(program: Command): void {
 
         if (!opts.dryRun) {
           try {
-            // Interrupt busy agent and clear partial input before sending
-            await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "C-c"]);
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "C-u"]);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            const message =
-              "There are review comments on your PR. Check with `gh pr view --comments` and `gh api` for inline comments. Address each one, push fixes, and reply.";
-            await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "-l", message]);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "Enter"]);
+            await sm.send(result.sessionId, REVIEW_FIX_PROMPT);
             console.log(chalk.green(`    -> Fix prompt sent`));
           } catch (err) {
             console.error(chalk.red(`    -> Failed to send: ${err}`));

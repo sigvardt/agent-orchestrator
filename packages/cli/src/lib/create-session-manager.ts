@@ -10,9 +10,11 @@
 import {
   createPluginRegistry,
   createSessionManager,
+  createLifecycleManager,
   type OrchestratorConfig,
   type SessionManager,
   type PluginRegistry,
+  type LifecycleManager,
 } from "@composio/ao-core";
 
 let registryPromise: Promise<PluginRegistry> | null = null;
@@ -22,7 +24,7 @@ let registryPromise: Promise<PluginRegistry> | null = null;
  * Caches the Promise (not the resolved value) so concurrent callers
  * await the same initialization rather than racing.
  */
-async function getRegistry(config: OrchestratorConfig): Promise<PluginRegistry> {
+export async function getRegistry(config: OrchestratorConfig): Promise<PluginRegistry> {
   if (!registryPromise) {
     registryPromise = (async () => {
       const registry = createPluginRegistry();
@@ -45,3 +47,14 @@ export async function getSessionManager(config: OrchestratorConfig): Promise<Ses
   return createSessionManager({ config, registry });
 }
 
+/**
+ * Create a LifecycleManager backed by core's implementation.
+ * Shares the same plugin registry initialization path as SessionManager.
+ */
+export async function getLifecycleManager(
+  config: OrchestratorConfig,
+): Promise<LifecycleManager> {
+  const registry = await getRegistry(config);
+  const sessionManager = createSessionManager({ config, registry });
+  return createLifecycleManager({ config, registry, sessionManager });
+}
