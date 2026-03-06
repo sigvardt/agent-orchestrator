@@ -39,10 +39,12 @@ export function registerLifecycleWorker(program: Command): void {
       const lifecycle = await getLifecycleManager(config, projectId);
       const intervalMs = parseInterval(opts.intervalMs ?? "30000");
       let shuttingDown = false;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
 
       const shutdown = (code: number): void => {
         if (shuttingDown) return;
         shuttingDown = true;
+        if (heartbeat) clearInterval(heartbeat);
         lifecycle.stop();
         clearLifecycleWorkerPid(config, projectId, process.pid);
         // Flush stdout/stderr before exiting so crash messages reach the log file
@@ -79,7 +81,7 @@ export function registerLifecycleWorker(program: Command): void {
       );
 
       // Periodic heartbeat so we can verify the worker is alive from the log
-      const heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         console.log(`[ao lifecycle] Heartbeat for ${projectId} (pid=${process.pid})`);
       }, 5 * 60_000); // every 5 minutes
       heartbeat.unref();

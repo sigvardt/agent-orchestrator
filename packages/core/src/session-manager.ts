@@ -1137,6 +1137,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       await runtimePlugin.sendMessage(handle, message);
 
       for (let attempt = 1; attempt <= SEND_CONFIRMATION_ATTEMPTS; attempt++) {
+        // Sleep before each check (including the first) so the runtime has time
+        // to reflect the message in its output.
+        await sleep(SEND_CONFIRMATION_POLL_MS);
+
         const output = await captureOutput(handle);
         const activity = detectActivityFromOutput(output) ?? session.activity;
         const delivered =
@@ -1147,10 +1151,6 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
         if (delivered) {
           return;
-        }
-
-        if (attempt < SEND_CONFIRMATION_ATTEMPTS) {
-          await sleep(SEND_CONFIRMATION_POLL_MS);
         }
       }
 
