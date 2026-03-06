@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { type Session, type SessionManager, getProjectBaseDir } from "@composio/ao-core";
 
-const { mockExec, mockConfigRef, mockSessionManager } = vi.hoisted(() => ({
+const { mockExec, mockConfigRef, mockSessionManager, mockEnsureLifecycleWorker } = vi.hoisted(() => ({
   mockExec: vi.fn(),
   mockConfigRef: { current: null as Record<string, unknown> | null },
   mockSessionManager: {
@@ -17,6 +17,7 @@ const { mockExec, mockConfigRef, mockSessionManager } = vi.hoisted(() => ({
     send: vi.fn(),
     claimPR: vi.fn(),
   },
+  mockEnsureLifecycleWorker: vi.fn(),
 }));
 
 vi.mock("../../src/lib/shell.js", () => ({
@@ -50,6 +51,10 @@ vi.mock("@composio/ao-core", async (importOriginal) => {
 
 vi.mock("../../src/lib/create-session-manager.js", () => ({
   getSessionManager: async (): Promise<SessionManager> => mockSessionManager as SessionManager,
+}));
+
+vi.mock("../../src/lib/lifecycle-service.js", () => ({
+  ensureLifecycleWorker: (...args: unknown[]) => mockEnsureLifecycleWorker(...args),
 }));
 
 vi.mock("../../src/lib/metadata.js", () => ({
@@ -108,6 +113,14 @@ beforeEach(() => {
   mockSessionManager.spawn.mockReset();
   mockSessionManager.claimPR.mockReset();
   mockExec.mockReset();
+  mockEnsureLifecycleWorker.mockReset();
+  mockEnsureLifecycleWorker.mockResolvedValue({
+    running: true,
+    started: true,
+    pid: 12345,
+    pidFile: '/tmp/lifecycle-worker.pid',
+    logFile: '/tmp/lifecycle-worker.log',
+  });
 });
 
 afterEach(() => {
@@ -143,6 +156,11 @@ describe("spawn command", () => {
     mockSessionManager.spawn.mockResolvedValue(fakeSession);
 
     await program.parseAsync(["node", "test", "spawn", "my-app", "INT-100"]);
+
+    expect(mockEnsureLifecycleWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ configPath: expect.any(String) }),
+      "my-app",
+    );
 
     // Must delegate to session manager
     expect(mockSessionManager.spawn).toHaveBeenCalledWith({

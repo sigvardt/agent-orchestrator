@@ -582,7 +582,7 @@ describe("spawn", () => {
     expect(mockRuntime.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("does not send prompt post-launch when no prompt is provided", async () => {
+  it("sends AO guidance post-launch even when no explicit prompt is provided", async () => {
     vi.useFakeTimers();
     const postLaunchAgent = {
       ...mockAgent,
@@ -599,11 +599,14 @@ describe("spawn", () => {
     };
 
     const sm = createSessionManager({ config, registry: registryWithPostLaunch });
-    const spawnPromise = sm.spawn({ projectId: "my-app" }); // No prompt
+    const spawnPromise = sm.spawn({ projectId: "my-app" });
     await vi.advanceTimersByTimeAsync(5_000);
     await spawnPromise;
 
-    expect(mockRuntime.sendMessage).not.toHaveBeenCalled();
+    expect(mockRuntime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.any(String) }),
+      expect.stringContaining("ao session claim-pr"),
+    );
     vi.useRealTimers();
   });
 
@@ -1228,7 +1231,7 @@ describe("cleanup", () => {
 });
 
 describe("send", () => {
-  it("sends message via runtime.sendMessage", async () => {
+  it("sends message via runtime.sendMessage and confirms delivery", async () => {
     writeMetadata(sessionsDir, "app-1", {
       worktree: "/tmp",
       branch: "main",
@@ -1236,11 +1239,66 @@ describe("send", () => {
       project: "my-app",
       runtimeHandle: JSON.stringify(makeHandle("rt-1")),
     });
+    vi.mocked(mockRuntime.getOutput)
+      .mockResolvedValueOnce("before")
+      .mockResolvedValueOnce("after");
 
     const sm = createSessionManager({ config, registry: mockRegistry });
     await sm.send("app-1", "Fix the CI failures");
 
     expect(mockRuntime.sendMessage).toHaveBeenCalledWith(makeHandle("rt-1"), "Fix the CI failures");
+  });
+
+  it("restores a dead session before sending the message", async () => {
+    const wsPath = join(tmpDir, "ws-app-1");
+    mkdirSync(wsPath, { recursive: true });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "feat/TEST-1",
+      status: "working",
+      project: "my-app",
+      issue: "TEST-1",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+
+    vi.mocked(mockRuntime.isAlive).mockImplementation(async (handle) => handle.id !== "rt-old");
+    vi.mocked(mockAgent.isProcessRunning).mockImplementation(
+      async (handle) => handle.id !== "rt-old",
+    );
+    vi.mocked(mockRuntime.create).mockResolvedValue(makeHandle("rt-restored"));
+    vi.mocked(mockRuntime.getOutput)
+      .mockResolvedValueOnce("restored prompt")
+      .mockResolvedValueOnce("before send")
+      .mockResolvedValueOnce("after send");
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await sm.send("app-1", "Please fix the review comments");
+
+    expect(mockRuntime.create).toHaveBeenCalled();
+    expect(mockRuntime.sendMessage).toHaveBeenCalledWith(
+      makeHandle("rt-restored"),
+      "Please fix the review comments",
+    );
+  });
+
+  it("resolves when delivery cannot be confirmed (message already sent)", async () => {
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+    vi.mocked(mockRuntime.getOutput).mockResolvedValue("steady output");
+    vi.mocked(mockAgent.detectActivity).mockReturnValue("idle");
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    // Should resolve without throwing — the message was already sent via
+    // sendMessage, so unconfirmed delivery is treated as a soft success
+    // to avoid duplicate dispatches on the next poll cycle.
+    await expect(sm.send("app-1", "Fix the CI failures")).resolves.toBeUndefined();
+    expect(mockRuntime.sendMessage).toHaveBeenCalled();
   });
 
   it("throws for nonexistent session", async () => {
@@ -1255,10 +1313,13 @@ describe("send", () => {
       status: "working",
       project: "my-app",
     });
+    vi.mocked(mockRuntime.getOutput)
+      .mockResolvedValueOnce("before")
+      .mockResolvedValueOnce("after");
 
     const sm = createSessionManager({ config, registry: mockRegistry });
     await sm.send("app-1", "hello");
-    // Should use session ID "app-1" as the handle id with default runtime
+
     expect(mockRuntime.sendMessage).toHaveBeenCalledWith(
       { id: "app-1", runtimeName: "mock", data: {} },
       "hello",

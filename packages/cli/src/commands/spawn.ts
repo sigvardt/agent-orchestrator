@@ -5,6 +5,7 @@ import { loadConfig, type OrchestratorConfig } from "@composio/ao-core";
 import { exec } from "../lib/shell.js";
 import { banner } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { ensureLifecycleWorker } from "../lib/lifecycle-service.js";
 import { preflight } from "../lib/preflight.js";
 
 interface SpawnClaimOptions {
@@ -151,6 +152,7 @@ export function registerSpawn(program: Command): void {
 
         try {
           await runSpawnPreflight(config, projectId, { claimPr: opts.claimPr });
+          await ensureLifecycleWorker(config, projectId);
           await spawnSession(config, projectId, issueId, opts.open, opts.agent, {
             claimPr: opts.claimPr,
             assignOnGithub: opts.assignOnGithub,
@@ -191,6 +193,7 @@ export function registerBatchSpawn(program: Command): void {
       // Pre-flight once before the loop so a missing prerequisite fails fast
       try {
         await runSpawnPreflight(config, projectId);
+        await ensureLifecycleWorker(config, projectId);
       } catch (err) {
         console.error(chalk.red(`✗ ${err instanceof Error ? err.message : String(err)}`));
         process.exit(1);

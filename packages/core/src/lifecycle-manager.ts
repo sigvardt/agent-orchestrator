@@ -160,6 +160,8 @@ export interface LifecycleManagerDeps {
   config: OrchestratorConfig;
   registry: PluginRegistry;
   sessionManager: SessionManager;
+  /** When set, only poll sessions belonging to this project. */
+  projectId?: string;
 }
 
 /** Track attempt counts for reactions per session. */
@@ -170,7 +172,7 @@ interface ReactionTracker {
 
 /** Create a LifecycleManager instance. */
 export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleManager {
-  const { config, registry, sessionManager } = deps;
+  const { config, registry, sessionManager, projectId: scopedProjectId } = deps;
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"
@@ -417,6 +419,211 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     };
   }
 
+  function clearReactionTracker(sessionId: SessionId, reactionKey: string): void {
+    reactionTrackers.delete(`${sessionId}:${reactionKey}`);
+  }
+
+  function getReactionConfigForSession(
+    session: Session,
+    reactionKey: string,
+  ): ReactionConfig | null {
+    const project = config.projects[session.projectId];
+    const globalReaction = config.reactions[reactionKey];
+    const projectReaction = project?.reactions?.[reactionKey];
+    const reactionConfig = projectReaction
+      ? { ...globalReaction, ...projectReaction }
+      : globalReaction;
+    return reactionConfig ? (reactionConfig as ReactionConfig) : null;
+  }
+
+  function updateSessionMetadata(
+    session: Session,
+    updates: Partial<Record<string, string>>,
+  ): void {
+    const project = config.projects[session.projectId];
+    if (!project) return;
+
+    const sessionsDir = getSessionsDir(config.configPath, project.path);
+    updateMetadata(sessionsDir, session.id, updates);
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === undefined) continue;
+      if (value === "") {
+        delete session.metadata[key];
+      } else {
+        session.metadata[key] = value;
+      }
+    }
+  }
+
+  function makeFingerprint(ids: string[]): string {
+    return [...ids].sort().join(",");
+  }
+
+  async function maybeDispatchReviewBacklog(
+    session: Session,
+    oldStatus: SessionStatus,
+    newStatus: SessionStatus,
+    transitionReaction?: { key: string; result: ReactionResult | null },
+  ): Promise<void> {
+    const project = config.projects[session.projectId];
+    if (!project || !session.pr) return;
+
+    const scm = project.scm ? registry.get<SCM>("scm", project.scm.plugin) : null;
+    if (!scm) return;
+
+    const humanReactionKey = "changes-requested";
+    const automatedReactionKey = "bugbot-comments";
+
+    if (newStatus === "merged" || newStatus === "killed") {
+      clearReactionTracker(session.id, humanReactionKey);
+      clearReactionTracker(session.id, automatedReactionKey);
+      updateSessionMetadata(session, {
+        lastPendingReviewFingerprint: "",
+        lastPendingReviewDispatchHash: "",
+        lastPendingReviewDispatchAt: "",
+        lastAutomatedReviewFingerprint: "",
+        lastAutomatedReviewDispatchHash: "",
+        lastAutomatedReviewDispatchAt: "",
+      });
+      return;
+    }
+
+    const [pendingResult, automatedResult] = await Promise.allSettled([
+      scm.getPendingComments(session.pr),
+      scm.getAutomatedComments(session.pr),
+    ]);
+
+    // null means "failed to fetch" — preserve existing metadata.
+    // [] means "confirmed no comments" — safe to clear.
+    const pendingComments =
+      pendingResult.status === "fulfilled" && Array.isArray(pendingResult.value)
+        ? pendingResult.value
+        : null;
+    const automatedComments =
+      automatedResult.status === "fulfilled" && Array.isArray(automatedResult.value)
+        ? automatedResult.value
+        : null;
+
+    // --- Pending (human) review comments ---
+    // null = SCM fetch failed; skip processing to preserve existing metadata.
+    if (pendingComments === null) {
+      console.debug(
+        `[ao lifecycle] Pending comments fetch failed for ${session.id}, preserving existing metadata`,
+      );
+    }
+    if (pendingComments !== null) {
+      const pendingFingerprint = makeFingerprint(pendingComments.map((comment) => comment.id));
+      const lastPendingFingerprint = session.metadata["lastPendingReviewFingerprint"] ?? "";
+      const lastPendingDispatchHash = session.metadata["lastPendingReviewDispatchHash"] ?? "";
+
+      if (
+        pendingFingerprint !== lastPendingFingerprint &&
+        transitionReaction?.key !== humanReactionKey
+      ) {
+        clearReactionTracker(session.id, humanReactionKey);
+      }
+      if (pendingFingerprint !== lastPendingFingerprint) {
+        updateSessionMetadata(session, {
+          lastPendingReviewFingerprint: pendingFingerprint,
+        });
+      }
+
+      if (!pendingFingerprint) {
+        clearReactionTracker(session.id, humanReactionKey);
+        updateSessionMetadata(session, {
+          lastPendingReviewFingerprint: "",
+          lastPendingReviewDispatchHash: "",
+          lastPendingReviewDispatchAt: "",
+        });
+      } else if (
+        transitionReaction?.key === humanReactionKey &&
+        transitionReaction.result?.success
+      ) {
+        if (lastPendingDispatchHash !== pendingFingerprint) {
+          updateSessionMetadata(session, {
+            lastPendingReviewDispatchHash: pendingFingerprint,
+            lastPendingReviewDispatchAt: new Date().toISOString(),
+          });
+        }
+      } else if (
+        !(oldStatus !== newStatus && newStatus === "changes_requested") &&
+        pendingFingerprint !== lastPendingDispatchHash
+      ) {
+        const reactionConfig = getReactionConfigForSession(session, humanReactionKey);
+        if (
+          reactionConfig &&
+          reactionConfig.action &&
+          (reactionConfig.auto !== false || reactionConfig.action === "notify")
+        ) {
+          const result = await executeReaction(
+            session.id,
+            session.projectId,
+            humanReactionKey,
+            reactionConfig,
+          );
+          if (result.success) {
+            updateSessionMetadata(session, {
+              lastPendingReviewDispatchHash: pendingFingerprint,
+              lastPendingReviewDispatchAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+
+    // --- Automated (bot) review comments ---
+    if (automatedComments === null) {
+      console.debug(
+        `[ao lifecycle] Automated comments fetch failed for ${session.id}, preserving existing metadata`,
+      );
+    }
+    if (automatedComments !== null) {
+      const automatedFingerprint = makeFingerprint(
+        automatedComments.map((comment) => comment.id),
+      );
+      const lastAutomatedFingerprint = session.metadata["lastAutomatedReviewFingerprint"] ?? "";
+      const lastAutomatedDispatchHash =
+        session.metadata["lastAutomatedReviewDispatchHash"] ?? "";
+
+      if (automatedFingerprint !== lastAutomatedFingerprint) {
+        clearReactionTracker(session.id, automatedReactionKey);
+        updateSessionMetadata(session, {
+          lastAutomatedReviewFingerprint: automatedFingerprint,
+        });
+      }
+
+      if (!automatedFingerprint) {
+        clearReactionTracker(session.id, automatedReactionKey);
+        updateSessionMetadata(session, {
+          lastAutomatedReviewFingerprint: "",
+          lastAutomatedReviewDispatchHash: "",
+          lastAutomatedReviewDispatchAt: "",
+        });
+      } else if (automatedFingerprint !== lastAutomatedDispatchHash) {
+        const reactionConfig = getReactionConfigForSession(session, automatedReactionKey);
+        if (
+          reactionConfig &&
+          reactionConfig.action &&
+          (reactionConfig.auto !== false || reactionConfig.action === "notify")
+        ) {
+          const result = await executeReaction(
+            session.id,
+            session.projectId,
+            automatedReactionKey,
+            reactionConfig,
+          );
+          if (result.success) {
+            updateSessionMetadata(session, {
+              lastAutomatedReviewDispatchHash: automatedFingerprint,
+              lastAutomatedReviewDispatchAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+  }
+
   /** Send a notification to all configured notifiers. */
   async function notifyHuman(event: OrchestratorEvent, priority: EventPriority): Promise<void> {
     const eventWithPriority = { ...event, priority };
@@ -443,17 +650,12 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     const oldStatus =
       tracked ?? ((session.metadata?.["status"] as SessionStatus | undefined) || session.status);
     const newStatus = await determineStatus(session);
+    let transitionReaction: { key: string; result: ReactionResult | null } | undefined;
 
     if (newStatus !== oldStatus) {
       // State transition detected
       states.set(session.id, newStatus);
-
-      // Update metadata — session.projectId is the config key (e.g., "my-app")
-      const project = config.projects[session.projectId];
-      if (project) {
-        const sessionsDir = getSessionsDir(config.configPath, project.path);
-        updateMetadata(sessionsDir, session.id, { status: newStatus });
-      }
+      updateSessionMetadata(session, { status: newStatus });
 
       // Reset allCompleteEmitted when any session becomes active again
       if (newStatus !== "merged" && newStatus !== "killed") {
@@ -465,7 +667,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       if (oldEventType) {
         const oldReactionKey = eventToReactionKey(oldEventType);
         if (oldReactionKey) {
-          reactionTrackers.delete(`${session.id}:${oldReactionKey}`);
+          clearReactionTracker(session.id, oldReactionKey);
         }
       }
 
@@ -476,23 +678,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         const reactionKey = eventToReactionKey(eventType);
 
         if (reactionKey) {
-          // Merge project-specific overrides with global defaults
-          const project = config.projects[session.projectId];
-          const globalReaction = config.reactions[reactionKey];
-          const projectReaction = project?.reactions?.[reactionKey];
-          const reactionConfig = projectReaction
-            ? { ...globalReaction, ...projectReaction }
-            : globalReaction;
+          const reactionConfig = getReactionConfigForSession(session, reactionKey);
 
           if (reactionConfig && reactionConfig.action) {
             // auto: false skips automated agent actions but still allows notifications
             if (reactionConfig.auto !== false || reactionConfig.action === "notify") {
-              await executeReaction(
+              const reactionResult = await executeReaction(
                 session.id,
                 session.projectId,
                 reactionKey,
-                reactionConfig as ReactionConfig,
+                reactionConfig,
               );
+              transitionReaction = { key: reactionKey, result: reactionResult };
               // Reaction is handling this event — suppress immediate human notification.
               // "send-to-agent" retries + escalates on its own; "notify"/"auto-merge"
               // already call notifyHuman internally. Notifying here would bypass the
@@ -520,6 +717,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       // No transition but track current state
       states.set(session.id, newStatus);
     }
+
+    await maybeDispatchReviewBacklog(session, oldStatus, newStatus, transitionReaction);
   }
 
   /** Run one polling cycle across all sessions. */
@@ -529,7 +728,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     polling = true;
 
     try {
-      const sessions = await sessionManager.list();
+      const sessions = await sessionManager.list(scopedProjectId);
 
       // Include sessions that are active OR whose status changed from what we last saw
       // (e.g., list() detected a dead runtime and marked it "killed" — we need to
@@ -574,8 +773,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           }
         }
       }
-    } catch {
-      // Poll cycle failed — will retry next interval
+    } catch (err) {
+      console.error("[ao lifecycle] Poll cycle failed:", err);
     } finally {
       polling = false;
     }
