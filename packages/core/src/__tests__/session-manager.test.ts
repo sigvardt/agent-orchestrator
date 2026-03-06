@@ -1711,6 +1711,56 @@ describe("cleanup", () => {
     expect(deleteLog).toContain("session delete ses_archived");
   });
 
+  it("does not skip archived cleanup for matching session IDs in other projects", async () => {
+    const deleteLogPath = join(tmpDir, "opencode-delete-archived-cross-project.log");
+    const mockBin = installMockOpencode("[]", deleteLogPath);
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
+    const project2Path = join(tmpDir, "my-app-2");
+    const configWithSecondProject: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app-2": {
+          name: "My App 2",
+          repo: "org/my-app-2",
+          path: project2Path,
+          defaultBranch: "main",
+          sessionPrefix: "app",
+          scm: { plugin: "github" },
+          tracker: { plugin: "github" },
+        },
+      },
+    };
+    const sessionsDir2 = getSessionsDir(configPath, project2Path);
+    mkdirSync(sessionsDir2, { recursive: true });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp/project-1",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+
+    writeMetadata(sessionsDir2, "app-1", {
+      worktree: "/tmp/project-2",
+      branch: "main",
+      status: "killed",
+      project: "my-app-2",
+      agent: "opencode",
+      opencodeSessionId: "ses_archived_project2",
+      runtimeHandle: JSON.stringify(makeHandle("rt-2")),
+    });
+    deleteMetadata(sessionsDir2, "app-1", true);
+
+    const sm = createSessionManager({ config: configWithSecondProject, registry: mockRegistry });
+    await sm.cleanup();
+
+    const deleteLog = readFileSync(deleteLogPath, "utf-8");
+    expect(deleteLog).toContain("session delete ses_archived_project2");
+  });
+
   it("skips invalid archived OpenCode session ids during cleanup", async () => {
     const deleteLogPath = join(tmpDir, "opencode-delete-archived-invalid.log");
     const mockBin = installMockOpencode("[]", deleteLogPath);
@@ -2995,6 +3045,27 @@ describe("restore", () => {
       runtimeHandle: JSON.stringify(makeHandle("rt-old")),
     });
     deleteMetadata(sessionsDir, "app-1");
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await expect(sm.restore("app-1")).rejects.toThrow(SessionNotRestorableError);
+
+    expect(readMetadataRaw(sessionsDir, "app-1")).toBeNull();
+  });
+
+  it("does not recreate active metadata from archive when session is not restorable", async () => {
+    const wsPath = join(tmpDir, "ws-app-archive-non-restorable");
+    mkdirSync(wsPath, { recursive: true });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      agent: "opencode",
+      opencodeSessionId: "ses_archive_valid",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+    deleteMetadata(sessionsDir, "app-1", true);
 
     const sm = createSessionManager({ config, registry: mockRegistry });
     await expect(sm.restore("app-1")).rejects.toThrow(SessionNotRestorableError);

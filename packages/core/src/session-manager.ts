@@ -1246,7 +1246,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   ): Promise<CleanupResult> {
     const result: CleanupResult = { killed: [], skipped: [], errors: [] };
     const sessions = await list(projectId);
-    const activeSessionIds = new Set(sessions.map((session) => session.id));
+    const activeSessionKeys = new Set(
+      sessions.map((session) => `${session.projectId}:${session.id}`),
+    );
 
     const pushUnique = (list: string[], id: string): void => {
       if (!list.includes(id)) list.push(id);
@@ -1324,7 +1326,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
       const sessionsDir = getProjectSessionsDir(project);
       for (const archivedId of listArchivedSessionIds(sessionsDir)) {
-        if (activeSessionIds.has(archivedId)) continue;
+        if (activeSessionKeys.has(`${projectKey}:${archivedId}`)) continue;
 
         const archived = readArchivedMetadataRaw(sessionsDir, archivedId);
         if (!archived) continue;
@@ -1512,6 +1514,22 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
     }
 
+    // 2. Reconstruct Session from metadata and enrich with live runtime state.
+    //    metadataToSession sets activity: null, so without enrichment a crashed
+    //    session (status "working", agent exited) would not be detected as terminal
+    //    and isRestorable would reject it.
+    const session = metadataToSession(sessionId, raw);
+    const plugins = resolvePlugins(project, raw["agent"]);
+    await enrichSessionWithRuntimeState(session, plugins, true);
+
+    // 3. Validate restorability
+    if (!isRestorable(session)) {
+      if (NON_RESTORABLE_STATUSES.has(session.status)) {
+        throw new SessionNotRestorableError(sessionId, `status is "${session.status}"`);
+      }
+      throw new SessionNotRestorableError(sessionId, "session is not in a terminal state");
+    }
+
     if (fromArchive) {
       writeMetadata(sessionsDir, sessionId, {
         worktree: raw["worktree"] ?? "",
@@ -1528,22 +1546,6 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         runtimeHandle: raw["runtimeHandle"],
         opencodeSessionId: raw["opencodeSessionId"],
       });
-    }
-
-    // 2. Reconstruct Session from metadata and enrich with live runtime state.
-    //    metadataToSession sets activity: null, so without enrichment a crashed
-    //    session (status "working", agent exited) would not be detected as terminal
-    //    and isRestorable would reject it.
-    const session = metadataToSession(sessionId, raw);
-    const plugins = resolvePlugins(project, raw["agent"]);
-    await enrichSessionWithRuntimeState(session, plugins, true);
-
-    // 3. Validate restorability
-    if (!isRestorable(session)) {
-      if (NON_RESTORABLE_STATUSES.has(session.status)) {
-        throw new SessionNotRestorableError(sessionId, `status is "${session.status}"`);
-      }
-      throw new SessionNotRestorableError(sessionId, "session is not in a terminal state");
     }
 
     // 4. Validate required plugins (plugins already resolved above for enrichment)
