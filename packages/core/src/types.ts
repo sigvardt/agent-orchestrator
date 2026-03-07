@@ -516,6 +516,15 @@ export interface SCM {
   /** Detect if a session has an open PR (by branch name) */
   detectPR(session: Session, project: ProjectConfig): Promise<PRInfo | null>;
 
+  /** Resolve a PR reference (number or URL) into canonical PR metadata. */
+  resolvePR?(reference: string, project: ProjectConfig): Promise<PRInfo>;
+
+  /** Assign a PR to the currently authenticated user, if supported. */
+  assignPRToCurrentUser?(pr: PRInfo): Promise<void>;
+
+  /** Check out the PR branch into a workspace. Returns true if branch changed. */
+  checkoutPR?(pr: PRInfo, workspacePath: string): Promise<boolean>;
+
   /** Get current PR state */
   getPRState(pr: PRInfo): Promise<PRState>;
 
@@ -992,6 +1001,7 @@ export interface SessionMetadata {
   tmuxName?: string; // Globally unique tmux session name (includes hash)
   issue?: string;
   pr?: string;
+  prAutoDetect?: "on" | "off";
   summary?: string;
   project?: string;
   agent?: string; // Agent plugin name (e.g. "codex", "claude-code") — persisted for lifecycle
@@ -1020,6 +1030,22 @@ export interface SessionManager {
   cleanup(projectId?: string, options?: { dryRun?: boolean }): Promise<CleanupResult>;
   send(sessionId: SessionId, message: string): Promise<void>;
   remap(sessionId: SessionId, force?: boolean): Promise<string>;
+  claimPR(sessionId: SessionId, prRef: string, options?: ClaimPROptions): Promise<ClaimPRResult>;
+}
+
+export interface ClaimPROptions {
+  assignOnGithub?: boolean;
+  takeover?: boolean;
+}
+
+export interface ClaimPRResult {
+  sessionId: SessionId;
+  projectId: string;
+  pr: PRInfo;
+  branchChanged: boolean;
+  githubAssigned: boolean;
+  githubAssignmentError?: string;
+  takenOverFrom: SessionId[];
 }
 
 export interface CleanupResult {

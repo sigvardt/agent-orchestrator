@@ -504,6 +504,7 @@ describe("plugin integration", () => {
         get: vi.fn().mockResolvedValue(makeSession({ status: "pr_open", pr })),
         kill: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue(undefined),
+        claimPR: vi.fn(),
         spawnOrchestrator: vi.fn(),
       };
 
@@ -534,6 +535,7 @@ describe("plugin integration", () => {
         get: vi.fn().mockResolvedValue(makeSession({ status: "pr_open", pr })),
         kill: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue(undefined),
+        claimPR: vi.fn(),
         spawnOrchestrator: vi.fn(),
       };
 
@@ -561,6 +563,7 @@ describe("plugin integration", () => {
         get: vi.fn().mockResolvedValue(makeSession({ status: "pr_open", pr })),
         kill: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue(undefined),
+        claimPR: vi.fn(),
         spawnOrchestrator: vi.fn(),
       };
 

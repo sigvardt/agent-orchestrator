@@ -31,6 +31,7 @@ import {
 } from "@composio/ao-core";
 import { exec, execSilent } from "../lib/shell.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { ensureLifecycleWorker, stopLifecycleWorker } from "../lib/lifecycle-service.js";
 import {
   findWebDir,
   buildDashboardEnv,
@@ -259,6 +260,8 @@ async function runStartup(
   opts?: { dashboard?: boolean; orchestrator?: boolean; rebuild?: boolean; autoPort?: boolean },
 ): Promise<void> {
   const sessionId = `${project.sessionPrefix}-orchestrator`;
+  const shouldStartLifecycle = opts?.dashboard !== false || opts?.orchestrator !== false;
+  let lifecycleStatus: Awaited<ReturnType<typeof ensureLifecycleWorker>> | null = null;
   let port = config.port ?? DEFAULT_PORT;
   const orchestratorSessionStrategy = normalizeOrchestratorSessionStrategy(
     project.orchestratorSessionStrategy,
@@ -309,6 +312,27 @@ async function runStartup(
     console.log(chalk.dim("  (Dashboard will be ready in a few seconds)\n"));
   }
 
+  if (shouldStartLifecycle) {
+    try {
+      spinner.start("Starting lifecycle worker");
+      lifecycleStatus = await ensureLifecycleWorker(config, projectId);
+      spinner.succeed(
+        lifecycleStatus.started
+          ? `Lifecycle worker started${lifecycleStatus.pid ? ` (PID ${lifecycleStatus.pid})` : ""}`
+          : `Lifecycle worker already running${lifecycleStatus.pid ? ` (PID ${lifecycleStatus.pid})` : ""}`,
+      );
+    } catch (err) {
+      spinner.fail("Lifecycle worker failed to start");
+      if (dashboardProcess) {
+        dashboardProcess.kill();
+      }
+      throw new Error(
+        `Failed to start lifecycle worker: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      );
+    }
+  }
+
   // Create orchestrator session (unless --no-orchestrator or already exists)
   let tmuxTarget = sessionId;
   if (opts?.orchestrator !== false) {
@@ -342,6 +366,14 @@ async function runStartup(
 
   if (opts?.dashboard !== false) {
     console.log(chalk.cyan("Dashboard:"), `http://localhost:${port}`);
+  }
+
+  if (shouldStartLifecycle && lifecycleStatus) {
+    const lifecycleLabel = lifecycleStatus.started ? "started" : "already running";
+    const lifecycleTarget = lifecycleStatus.pid
+      ? `${lifecycleLabel} (PID ${lifecycleStatus.pid})`
+      : lifecycleLabel;
+    console.log(chalk.cyan("Lifecycle:"), lifecycleTarget);
   }
 
   if (opts?.orchestrator !== false && !reused) {
@@ -482,6 +514,13 @@ export function registerStop(program: Command): void {
           spinner.succeed("Orchestrator session stopped");
         } else {
           console.log(chalk.yellow(`Orchestrator session "${sessionId}" is not running`));
+        }
+
+        const lifecycleStopped = await stopLifecycleWorker(config, _projectId);
+        if (lifecycleStopped) {
+          console.log(chalk.green("Lifecycle worker stopped"));
+        } else {
+          console.log(chalk.yellow("Lifecycle worker not running"));
         }
 
         // Stop dashboard
