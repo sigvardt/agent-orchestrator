@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Session, RuntimeHandle, AgentLaunchConfig } from "@composio/ao-core";
+import type { Session, RuntimeHandle, AgentLaunchConfig, AgentSpecificConfig } from "@composio/ao-core";
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks — available inside vi.mock factories
@@ -213,11 +213,18 @@ describe("getLaunchCommand", () => {
     expect(agent.getLaunchCommand(makeLaunchConfig())).toBe("'codex'");
   });
 
-  it("omits approval flags when permissions=skip", () => {
-    const cmd = agent.getLaunchCommand(makeLaunchConfig({ permissions: "skip" }));
-    expect(cmd).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+  it("includes bypass flag when permissions=permissionless", () => {
+    const cmd = agent.getLaunchCommand(makeLaunchConfig({ permissions: "permissionless" }));
+    expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(cmd).not.toContain("--ask-for-approval");
     expect(cmd).not.toContain("--full-auto");
+  });
+
+  it("treats legacy permissions=skip as permissionless", () => {
+    const cmd = agent.getLaunchCommand(
+      makeLaunchConfig({ permissions: "skip" as unknown as AgentLaunchConfig["permissions"] }),
+    );
+    expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
   });
 
   it("includes --ask-for-approval never when permissions=auto-edit", () => {
@@ -249,9 +256,9 @@ describe("getLaunchCommand", () => {
 
   it("combines all options", () => {
     const cmd = agent.getLaunchCommand(
-      makeLaunchConfig({ permissions: "skip", model: "o3", prompt: "Go" }),
+      makeLaunchConfig({ permissions: "permissionless", model: "o3", prompt: "Go" }),
     );
-    expect(cmd).toBe("'codex' --model 'o3' -c model_reasoning_effort=high -- 'Go'");
+    expect(cmd).toBe("'codex' --dangerously-bypass-approvals-and-sandbox --model 'o3' -c model_reasoning_effort=high -- 'Go'");
   });
 
   it("escapes single quotes in prompt (POSIX shell escaping)", () => {
@@ -961,7 +968,7 @@ describe("getRestoreCommand", () => {
     expect(cmd).toContain("thread-abc-123");
   });
 
-  it("omits approval flags when project config permissions=skip", async () => {
+  it("includes bypass flag when project config permissions=permissionless", async () => {
     const content = jsonl(
       { type: "session_meta", cwd: "/workspace/test", model: "gpt-4o" },
       { threadId: "thread-1" },
@@ -974,11 +981,30 @@ describe("getRestoreCommand", () => {
 
     const session = makeSession({ workspacePath: "/workspace/test" });
     const cmd = await agent.getRestoreCommand!(session, makeProjectConfig({
-      agentConfig: { permissions: "skip" },
+      agentConfig: { permissions: "permissionless" },
     }));
 
-    expect(cmd).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(cmd).not.toContain("--ask-for-approval");
+  });
+
+  it("treats legacy project config permissions=skip as permissionless", async () => {
+    const content = jsonl(
+      { type: "session_meta", cwd: "/workspace/test", model: "gpt-4o" },
+      { threadId: "thread-1" },
+    );
+    mockReaddir.mockResolvedValue(["sess.jsonl"]);
+    setupMockOpen(content);
+    setupMockStream(content);
+    mockReadFile.mockResolvedValue(content);
+    mockStat.mockResolvedValue({ mtimeMs: 1000 });
+
+    const session = makeSession({ workspacePath: "/workspace/test" });
+    const cmd = await agent.getRestoreCommand!(session, makeProjectConfig({
+      agentConfig: { permissions: "skip" as unknown as AgentSpecificConfig["permissions"] },
+    }));
+
+    expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
   });
 
   it("includes --ask-for-approval never from project config", async () => {
