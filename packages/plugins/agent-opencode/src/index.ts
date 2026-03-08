@@ -112,8 +112,7 @@ process.stdin.on('data', c => input += c).on('end', () => {
   return script.replace(/\n/g, " ").replace(/\s+/g, " ");
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _buildContinueSessionCommand(sessionTitle: string, sharedOptions: string[]): string {
+function buildContinueSessionCommand(sessionTitle: string, sharedOptions: string[]): string {
   const script = buildSessionLookupScript();
   const options = sharedOptions.length > 0 ? ` ${sharedOptions.join(" ")}` : "";
   return [
