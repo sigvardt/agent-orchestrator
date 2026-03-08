@@ -156,8 +156,7 @@ export function registerSend(program: Command): void {
           return output || "";
         }
 
-        const delegatesToSessionManager = Boolean(existingSession && sessionManager);
-        if (opts.wait !== false && canUseTmux && !delegatesToSessionManager) {
+        if (opts.wait !== false && canUseTmux) {
           const start = Date.now();
           let warned = false;
           while (isActive(agent, await captureOutput(5))) {
@@ -173,21 +172,11 @@ export function registerSend(program: Command): void {
           }
         }
 
-        if (!canUseTmux && !delegatesToSessionManager) {
-          console.error(
-            chalk.red(
-              `Session '${session}' is not tmux-backed and cannot be sent without lifecycle routing`,
-            ),
-          );
-          process.exit(1);
-        }
-
         if (existingSession && sessionManager) {
           await sessionManager.send(session, message);
           console.log(chalk.green("Message sent and processing"));
           return;
         }
-
         await sendViaTmux(tmuxTarget, message);
 
         // Verify delivery with retries

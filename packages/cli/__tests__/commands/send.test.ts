@@ -330,7 +330,7 @@ describe("send command", () => {
       );
     });
 
-    it("skips tmux busy detection when lifecycle send handles delivery", async () => {
+    it("uses session metadata agent for busy detection before lifecycle send", async () => {
       mockConfigRef.current = makeConfig();
       mockSessionManager.get.mockResolvedValue({
         id: "app-1",
@@ -357,16 +357,8 @@ describe("send command", () => {
       await program.parseAsync(["node", "test", "send", "app-1", "fix", "mapping"]);
 
       expect(mockSessionManager.send).toHaveBeenCalledWith("app-1", "fix mapping");
-      expect(consoleSpy).not.toHaveBeenCalledWith(
+      expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("Waiting for app-1 to become idle"),
-      );
-      expect(mockTmux).not.toHaveBeenCalledWith(
-        "capture-pane",
-        "-t",
-        "tmux-target-1",
-        "-p",
-        "-S",
-        expect.any(String),
       );
     });
 
