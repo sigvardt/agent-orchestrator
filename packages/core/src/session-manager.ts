@@ -1022,6 +1022,26 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       }
     }
 
+    // Atomically reserve the session ID before creating any resources.
+    // This prevents race conditions where concurrent spawnOrchestrator calls
+    // both see no existing session and proceed to create duplicate runtimes.
+    if (!reserveSessionId(sessionsDir, sessionId)) {
+      // Reservation failed - another process reserved it first.
+      // Check if the session now exists and is alive.
+      const concurrentSession = await get(sessionId);
+      if (concurrentSession?.runtimeHandle) {
+        const concurrentAlive = await plugins.runtime
+          .isAlive(concurrentSession.runtimeHandle)
+          .catch(() => false);
+        if (concurrentAlive && orchestratorSessionStrategy === "reuse") {
+          concurrentSession.metadata["orchestratorSessionReused"] = "true";
+          return concurrentSession;
+        }
+      }
+      // Session exists but isn't usable - throw to let caller retry
+      throw new Error(`Session ${sessionId} already exists but is not in a reusable state`);
+    }
+
     const reusableOpenCodeSessionId =
       plugins.agent.name === "opencode" && orchestratorSessionStrategy === "reuse"
         ? await resolveOpenCodeSessionReuse({

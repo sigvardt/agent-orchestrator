@@ -2947,6 +2947,93 @@ describe("spawnOrchestrator", () => {
 
     expect(session.runtimeHandle).toEqual(makeHandle("rt-1"));
   });
+
+  it("reuses existing orchestrator on reservation conflict when strategy is reuse", async () => {
+    const opencodeAgent: Agent = {
+      ...mockAgent,
+      name: "opencode",
+    };
+    const registryWithOpenCode: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return opencodeAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+
+    const configWithReuse: OrchestratorConfig = {
+      ...config,
+      defaults: { ...config.defaults, agent: "opencode" },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          agent: "opencode",
+          orchestratorSessionStrategy: "reuse",
+        },
+      },
+    };
+
+    writeMetadata(sessionsDir, "app-orchestrator", {
+      worktree: join(tmpDir, "my-app"),
+      branch: "main",
+      status: "working",
+      role: "orchestrator",
+      project: "my-app",
+      agent: "opencode",
+      runtimeHandle: JSON.stringify(makeHandle("rt-concurrent")),
+      opencodeSessionId: "ses_concurrent",
+      createdAt: new Date().toISOString(),
+    });
+
+    vi.mocked(mockRuntime.isAlive).mockResolvedValue(true);
+
+    const sm = createSessionManager({ config: configWithReuse, registry: registryWithOpenCode });
+    const session = await sm.spawnOrchestrator({ projectId: "my-app" });
+
+    expect(session.metadata["orchestratorSessionReused"]).toBe("true");
+    expect(mockRuntime.create).not.toHaveBeenCalled();
+  });
+
+  it("throws on reservation conflict when existing session is not usable", async () => {
+    writeMetadata(sessionsDir, "app-orchestrator", {
+      worktree: join(tmpDir, "my-app"),
+      branch: "main",
+      status: "killed",
+      role: "orchestrator",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-dead")),
+      createdAt: new Date().toISOString(),
+    });
+
+    vi.mocked(mockRuntime.isAlive).mockResolvedValue(false);
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await expect(sm.spawnOrchestrator({ projectId: "my-app" })).rejects.toThrow(
+      "already exists but is not in a reusable state",
+    );
+  });
+
+  it("never creates duplicate runtime on reservation conflict", async () => {
+    writeMetadata(sessionsDir, "app-orchestrator", {
+      worktree: join(tmpDir, "my-app"),
+      branch: "main",
+      status: "working",
+      role: "orchestrator",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-existing")),
+      createdAt: new Date().toISOString(),
+    });
+
+    vi.mocked(mockRuntime.isAlive).mockResolvedValue(false);
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await expect(sm.spawnOrchestrator({ projectId: "my-app" })).rejects.toThrow();
+
+    expect(mockRuntime.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("restore", () => {

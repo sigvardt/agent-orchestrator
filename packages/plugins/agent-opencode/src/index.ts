@@ -37,6 +37,49 @@ function parseSessionList(raw: string): OpenCodeSessionListEntry[] {
   });
 }
 
+/**
+ * Parse JSON stream lines from `opencode run --format json` output.
+ * Each line is a JSON object. We look for objects containing a session_id field.
+ * The step_start event typically contains the session_id.
+ */
+function buildSessionIdCaptureScript(): string {
+  const script = `
+let buffer = '';
+let captured = null;
+process.stdin.on('data', chunk => {
+  buffer += chunk;
+  const lines = buffer.split('\\n');
+  buffer = lines.pop() || '';
+  for (const line of lines) {
+    if (captured) continue;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj && typeof obj.session_id === 'string' && /^ses_[A-Za-z0-9_-]+$/.test(obj.session_id)) {
+        captured = obj.session_id;
+      }
+    } catch {}
+  }
+}).on('end', () => {
+  if (buffer.trim()) {
+    try {
+      const obj = JSON.parse(buffer.trim());
+      if (obj && typeof obj.session_id === 'string' && /^ses_[A-Za-z0-9_-]+$/.test(obj.session_id)) {
+        captured = obj.session_id;
+      }
+    } catch {}
+  }
+  if (captured) {
+    process.stdout.write(captured);
+    process.exit(0);
+  }
+  process.exit(1);
+});
+  `.trim();
+  return script.replace(/\n/g, " ").replace(/\s+/g, " ");
+}
+
 function buildSessionLookupScript(): string {
   const script = `
 let input = '';
@@ -136,15 +179,27 @@ function createOpenCodeAgent(): Agent {
       }
 
       if (!existingSessionId) {
-        const runOptions = ["--title", shellEscape(`AO:${config.sessionId}`), ...sharedOptions];
+        const runOptions = [
+          "--title",
+          shellEscape(`AO:${config.sessionId}`),
+          "--format",
+          "json",
+          ...sharedOptions,
+        ];
+        const captureScript = buildSessionIdCaptureScript();
+        const fallbackScript = buildSessionLookupScript();
         const runCommand = promptValue
           ? ["opencode", "run", ...runOptions, promptValue].join(" ")
           : ["opencode", "run", ...runOptions, "--command", "true"].join(" ");
-        const continueCommand = buildContinueSessionCommand(
-          `AO:${config.sessionId}`,
-          sharedOptions,
-        );
-        return `${runCommand} && ${continueCommand}`;
+        const options = sharedOptions.length > 0 ? ` ${sharedOptions.join(" ")}` : "";
+        return [
+          `SES_ID=$(${runCommand} | node -e ${shellEscape(captureScript)})`,
+          `if [ -z "$SES_ID" ]; then`,
+          `  SES_ID=$(opencode session list --format json | node -e ${shellEscape(fallbackScript)} ${shellEscape(`AO:${config.sessionId}`)})`,
+          "fi",
+          '[ -n "$SES_ID" ]',
+          `exec opencode --session "$SES_ID"${options}`,
+        ].join("; ");
       }
 
       if (promptValue) {
