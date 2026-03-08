@@ -206,7 +206,28 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         if (activityState) {
           if (activityState.state === "waiting_input") return "needs_input";
           if (activityState.state === "exited") return "killed";
-          // active/ready/idle/blocked — proceed to PR checks below
+
+          // Stuck detection: if agent is idle/blocked beyond the configured threshold,
+          // transition to "stuck" so the agent-stuck reaction can fire.
+          if (
+            (activityState.state === "idle" || activityState.state === "blocked") &&
+            activityState.timestamp
+          ) {
+            const stuckReaction =
+              config.projects[session.projectId]?.reactions?.["agent-stuck"] ??
+              config.reactions["agent-stuck"];
+            const thresholdStr = (stuckReaction as Record<string, unknown> | undefined)?.threshold;
+            if (typeof thresholdStr === "string") {
+              const stuckThresholdMs = parseDuration(thresholdStr);
+              if (stuckThresholdMs > 0) {
+                const idleMs = Date.now() - activityState.timestamp.getTime();
+                if (idleMs > stuckThresholdMs) return "stuck";
+              }
+            }
+          }
+
+          // active/ready/idle (below threshold)/blocked (below threshold) —
+          // proceed to PR checks below
         } else {
           // getActivityState returned null — fall back to terminal output parsing
           const runtime = registry.get<Runtime>(
@@ -702,18 +723,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           }
         }
 
-        // For significant transitions not already notified by a reaction, notify humans
+        // For transitions not already notified by a reaction, notify humans.
+        // All priorities (including "info") are routed through notificationRouting
+        // so the config controls which notifiers receive each priority level.
         if (!reactionHandledNotify) {
           const priority = inferPriority(eventType);
-          if (priority !== "info") {
-            const event = createEvent(eventType, {
-              sessionId: session.id,
-              projectId: session.projectId,
-              message: `${session.id}: ${oldStatus} → ${newStatus}`,
-              data: { oldStatus, newStatus },
-            });
-            await notifyHuman(event, priority);
-          }
+          const event = createEvent(eventType, {
+            sessionId: session.id,
+            projectId: session.projectId,
+            message: `${session.id}: ${oldStatus} → ${newStatus}`,
+            data: { oldStatus, newStatus },
+          });
+          await notifyHuman(event, priority);
         }
       }
     } else {
