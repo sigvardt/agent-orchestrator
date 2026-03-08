@@ -191,3 +191,4 @@ This package is a dependency of all other packages. Build it first if working on
 - Swappability: use tmux locally, docker in CI, k8s in prod
 - Testability: mock plugins for tests
 - Extensibility: users can add custom plugins (e.g., company-specific notifier)
+
