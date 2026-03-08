@@ -149,7 +149,12 @@ async function decomposeTask(
     throw new Error(`Decomposition failed — no JSON array in response: ${text}`);
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error(`Decomposition produced invalid JSON: ${(e as Error).message}`);
+  }
   if (!Array.isArray(parsed) || parsed.length < 2) {
     throw new Error(
       `Decomposition produced ${Array.isArray(parsed) ? parsed.length : "non-array"} subtasks — need at least 2`,

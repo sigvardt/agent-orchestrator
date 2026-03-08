@@ -72,6 +72,11 @@ export function getServices(): Promise<Services> {
 }
 
 async function initServices(): Promise<Services> {
+  // Stop existing lifecycle manager before re-initializing (HMR support)
+  if (globalForServices._aoServices?.lifecycleManager) {
+    globalForServices._aoServices.lifecycleManager.stop();
+  }
+
   const config = loadConfig();
   const registry = createPluginRegistry();
 
