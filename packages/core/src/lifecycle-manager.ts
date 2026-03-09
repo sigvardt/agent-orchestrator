@@ -10,7 +10,7 @@
  * Reference: scripts/claude-session-status, scripts/claude-review-check
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   SESSION_STATUS,
   PR_STATE,
@@ -76,6 +76,76 @@ function inferPriority(type: EventType): EventPriority {
   return "info";
 }
 
+const EVENT_IDEMPOTENCY_BUCKET_MS = 60_000;
+const RECENT_EVENT_TTL_MS = 120_000;
+
+function stableSerializeIdempotencyPart(value: unknown): string {
+  if (value === null || typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === "bigint") {
+    return JSON.stringify(value.toString());
+  }
+
+  if (value instanceof Date) {
+    return JSON.stringify(value.toISOString());
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerializeIdempotencyPart(item)).join(",")}]`;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const entries = Object.keys(record)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableSerializeIdempotencyPart(record[key])}`,
+      );
+    return `{${entries.join(",")}}`;
+  }
+
+  return JSON.stringify(String(value));
+}
+
+function createScopedIdempotencyKey(opts: {
+  sessionId: SessionId;
+  scope: string;
+  parts?: ReadonlyArray<unknown>;
+  timestamp: Date;
+}): string {
+  const bucket = Math.floor(opts.timestamp.getTime() / EVENT_IDEMPOTENCY_BUCKET_MS);
+  const payload = stableSerializeIdempotencyPart([
+    opts.sessionId,
+    opts.scope,
+    ...(opts.parts ?? []),
+    bucket,
+  ]);
+
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+function createTransitionIdempotencyKey(opts: {
+  sessionId: SessionId;
+  transition: EventType;
+  oldStatus: SessionStatus;
+  newStatus: SessionStatus;
+  timestamp: Date;
+}): string {
+  return createScopedIdempotencyKey({
+    sessionId: opts.sessionId,
+    scope: opts.transition,
+    parts: [opts.oldStatus, opts.newStatus],
+    timestamp: opts.timestamp,
+  });
+}
+
 /** Create an OrchestratorEvent with defaults filled in. */
 function createEvent(
   type: EventType,
@@ -85,18 +155,35 @@ function createEvent(
     message: string;
     priority?: EventPriority;
     data?: Record<string, unknown>;
+    timestamp?: Date;
+    idempotencyKey?: string;
   },
 ): OrchestratorEvent {
+  const timestamp = opts.timestamp ?? new Date();
+
   return {
     id: randomUUID(),
+    idempotencyKey:
+      opts.idempotencyKey ??
+      createScopedIdempotencyKey({
+        sessionId: opts.sessionId,
+        scope: type,
+        parts: [opts.message, opts.data ?? {}],
+        timestamp,
+      }),
     type,
     priority: opts.priority ?? inferPriority(type),
     sessionId: opts.sessionId,
     projectId: opts.projectId,
-    timestamp: new Date(),
+    timestamp,
     message: opts.message,
     data: opts.data ?? {},
   };
+}
+
+interface EventEmissionContext {
+  idempotencyKey?: string;
+  timestamp?: Date;
 }
 
 /** Determine which event type corresponds to a status transition. */
@@ -297,9 +384,30 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"
+  const recentEmissions = new Map<string, number>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let polling = false; // re-entrancy guard
   let allCompleteEmitted = false; // guard against repeated all_complete
+
+  function pruneRecentEmissions(now = Date.now()): void {
+    for (const [key, expiresAt] of recentEmissions.entries()) {
+      if (expiresAt <= now) {
+        recentEmissions.delete(key);
+      }
+    }
+  }
+
+  function reserveEmission(idempotencyKey: string, now = Date.now()): boolean {
+    pruneRecentEmissions(now);
+    const expiresAt = recentEmissions.get(idempotencyKey);
+
+    if (typeof expiresAt === "number" && expiresAt > now) {
+      return false;
+    }
+
+    recentEmissions.set(idempotencyKey, now + RECENT_EVENT_TTL_MS);
+    return true;
+  }
 
   /** Check if idle time exceeds the agent-stuck threshold. */
   function isIdleBeyondThreshold(session: Session, idleTimestamp: Date): boolean {
@@ -605,6 +713,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     reactionKey: string,
     reactionConfig: ReactionConfig,
     pollStats?: LifecyclePollStats,
+    eventContext?: EventEmissionContext,
   ): Promise<ReactionResult> {
     const trackerKey = `${sessionId}:${reactionKey}`;
     let tracker = reactionTrackers.get(trackerKey);
@@ -644,6 +753,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         projectId,
         message: `Reaction '${reactionKey}' escalated after ${tracker.attempts} attempts`,
         data: { reactionKey, attempts: tracker.attempts },
+        timestamp: eventContext?.timestamp,
+        idempotencyKey: eventContext?.idempotencyKey,
       });
       logLifecycle("info", "reaction.escalated", {
         pollId: pollStats?.pollId,
@@ -712,6 +823,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           projectId,
           message: `Reaction '${reactionKey}' triggered notification`,
           data: { reactionKey },
+          timestamp: eventContext?.timestamp,
+          idempotencyKey: eventContext?.idempotencyKey,
         });
         await notifyHuman(event, reactionConfig.priority ?? "info", pollStats);
         return {
@@ -730,6 +843,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           projectId,
           message: `Reaction '${reactionKey}' triggered auto-merge`,
           data: { reactionKey },
+          timestamp: eventContext?.timestamp,
+          idempotencyKey: eventContext?.idempotencyKey,
         });
         await notifyHuman(event, "action", pollStats);
         return {
@@ -905,12 +1020,22 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           reactionConfig.action &&
           (reactionConfig.auto !== false || reactionConfig.action === "notify")
         ) {
+          const timestamp = new Date();
           const result = await executeReaction(
             session.id,
             session.projectId,
             humanReactionKey,
             reactionConfig,
             pollStats,
+            {
+              timestamp,
+              idempotencyKey: createScopedIdempotencyKey({
+                sessionId: session.id,
+                scope: humanReactionKey,
+                parts: [pendingFingerprint],
+                timestamp,
+              }),
+            },
           );
           if (result.success) {
             updateSessionMetadata(session, {
@@ -949,12 +1074,22 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           reactionConfig.action &&
           (reactionConfig.auto !== false || reactionConfig.action === "notify")
         ) {
+          const timestamp = new Date();
           const result = await executeReaction(
             session.id,
             session.projectId,
             automatedReactionKey,
             reactionConfig,
             pollStats,
+            {
+              timestamp,
+              idempotencyKey: createScopedIdempotencyKey({
+                sessionId: session.id,
+                scope: automatedReactionKey,
+                parts: [automatedFingerprint],
+                timestamp,
+              }),
+            },
           );
           if (result.success) {
             updateSessionMetadata(session, {
@@ -984,6 +1119,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         priority,
         eventType: event.type,
         reason: "no_notifiers_configured",
+      });
+      return;
+    }
+
+    if (!reserveEmission(event.idempotencyKey, event.timestamp.getTime())) {
+      logLifecycle("info", "notification.deduplicated", {
+        pollId: pollStats?.pollId,
+        projectId: event.projectId,
+        sessionId: event.sessionId,
+        priority,
+        eventType: event.type,
+        idempotencyKey: event.idempotencyKey,
       });
       return;
     }
@@ -1085,6 +1232,14 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
       // Handle transition: notify humans and/or trigger reactions
       if (eventType) {
+        const transitionTimestamp = new Date();
+        const transitionIdempotencyKey = createTransitionIdempotencyKey({
+          sessionId: session.id,
+          transition: eventType,
+          oldStatus,
+          newStatus,
+          timestamp: transitionTimestamp,
+        });
         let reactionHandledNotify = false;
 
         if (reactionKey) {
@@ -1099,6 +1254,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 reactionKey,
                 reactionConfig,
                 pollStats,
+                {
+                  timestamp: transitionTimestamp,
+                  idempotencyKey: transitionIdempotencyKey,
+                },
               );
               transitionReaction = { key: reactionKey, result: reactionResult };
               // Reaction is handling this event — suppress immediate human notification.
@@ -1120,6 +1279,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             projectId: session.projectId,
             message: `${session.id}: ${oldStatus} → ${newStatus}`,
             data: { oldStatus, newStatus },
+            timestamp: transitionTimestamp,
+            idempotencyKey: transitionIdempotencyKey,
           });
           await notifyHuman(event, priority, pollStats);
         }
@@ -1143,6 +1304,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       return;
     }
     polling = true;
+    pruneRecentEmissions();
     const pollStats = createPollStats();
 
     logLifecycle("info", "poll.start", {
@@ -1216,12 +1378,22 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           const reactionConfig = config.reactions[reactionKey];
           if (reactionConfig && reactionConfig.action) {
             if (reactionConfig.auto !== false || reactionConfig.action === "notify") {
+              const timestamp = new Date();
               await executeReaction(
                 "system",
                 "all",
                 reactionKey,
                 reactionConfig as ReactionConfig,
                 pollStats,
+                {
+                  timestamp,
+                  idempotencyKey: createScopedIdempotencyKey({
+                    sessionId: "system",
+                    scope: reactionKey,
+                    parts: ["all_complete"],
+                    timestamp,
+                  }),
+                },
               );
             }
           }

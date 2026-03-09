@@ -21,6 +21,7 @@ const mockPlatform = platform as unknown as Mock;
 function makeEvent(overrides: Partial<OrchestratorEvent> = {}): OrchestratorEvent {
   return {
     id: "evt-1",
+    idempotencyKey: "evt-1-key",
     type: "session.spawned",
     priority: "info",
     sessionId: "app-1",

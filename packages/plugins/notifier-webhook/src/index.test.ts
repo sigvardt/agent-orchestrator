@@ -5,6 +5,7 @@ import { manifest, create } from "./index.js";
 function makeEvent(overrides: Partial<OrchestratorEvent> = {}): OrchestratorEvent {
   return {
     id: "evt-1",
+    idempotencyKey: "evt-1-key",
     type: "ci.failing",
     priority: "action",
     sessionId: "app-1",
@@ -88,6 +89,7 @@ describe("notifier-webhook", () => {
       const body = JSON.parse(opts.body);
       expect(body.type).toBe("notification");
       expect(body.event.id).toBe("evt-1");
+      expect(body.event.idempotencyKey).toBe("evt-1-key");
       expect(body.event.sessionId).toBe("app-1");
       expect(body.event.type).toBe("ci.failing");
     });

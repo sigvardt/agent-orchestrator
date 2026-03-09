@@ -14,6 +14,7 @@ import type {
 export function makeEvent(overrides: Partial<OrchestratorEvent> = {}): OrchestratorEvent {
   return {
     id: "evt-test-1",
+    idempotencyKey: "evt-test-1-key",
     type: "session.spawned" as EventType,
     priority: "info" as EventPriority,
     sessionId: "app-1",
