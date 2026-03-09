@@ -13,6 +13,56 @@ function parseInterval(value: string): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
 }
 
+function serializeWorkerLogValue(value: unknown): unknown {
+  if (value instanceof Error) {
+    const cause = value.cause === undefined ? undefined : serializeWorkerLogValue(value.cause);
+    return {
+      name: value.name,
+      message: value.message,
+      ...(value.stack ? { stack: value.stack } : {}),
+      ...(cause !== undefined ? { cause } : {}),
+    };
+  }
+
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)) as unknown;
+  } catch {
+    return String(value);
+  }
+}
+
+function writeWorkerLog(event: string, fields: Record<string, unknown> = {}): void {
+  const payload = Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => [key, serializeWorkerLogValue(value)]),
+  );
+
+  process.stdout.write(
+    `${JSON.stringify({
+      timestamp: new Date().toISOString(),
+      scope: "lifecycle-worker",
+      event,
+      ...payload,
+    })}\n`,
+  );
+}
+
 export function registerLifecycleWorker(program: Command): void {
   program
     .command("lifecycle-worker")
@@ -30,9 +80,11 @@ export function registerLifecycleWorker(program: Command): void {
       if (existing.running && existing.pid !== process.pid) {
         // Another lifecycle worker is already running for this project — exit
         // silently to avoid duplicate polling loops.
-        console.log(
-          `[ao lifecycle] Worker already running for ${projectId} (pid=${existing.pid}), exiting.`,
-        );
+        writeWorkerLog("worker.already_running", {
+          projectId,
+          pid: existing.pid,
+          currentPid: process.pid,
+        });
         return;
       }
 
@@ -41,9 +93,15 @@ export function registerLifecycleWorker(program: Command): void {
       let shuttingDown = false;
       let heartbeat: ReturnType<typeof setInterval> | null = null;
 
-      const shutdown = (code: number): void => {
+      const shutdown = (code: number, signal?: string): void => {
         if (shuttingDown) return;
         shuttingDown = true;
+        writeWorkerLog("worker.shutdown", {
+          projectId,
+          pid: process.pid,
+          exitCode: code,
+          ...(signal ? { signal } : {}),
+        });
         if (heartbeat) clearInterval(heartbeat);
         lifecycle.stop();
         clearLifecycleWorkerPid(config, projectId, process.pid);
@@ -64,25 +122,40 @@ export function registerLifecycleWorker(program: Command): void {
         }
       };
 
-      process.on("SIGINT", () => shutdown(0));
-      process.on("SIGTERM", () => shutdown(0));
+      process.on("SIGINT", () => shutdown(0, "SIGINT"));
+      process.on("SIGTERM", () => shutdown(0, "SIGTERM"));
       process.on("uncaughtException", (err) => {
-        console.error(`[ao lifecycle] Worker crashed for ${projectId}:`, err);
-        shutdown(1);
+        writeWorkerLog("worker.crash", {
+          projectId,
+          pid: process.pid,
+          source: "uncaughtException",
+          error: err,
+        });
+        shutdown(1, "uncaughtException");
       });
       process.on("unhandledRejection", (reason) => {
-        console.error(`[ao lifecycle] Worker crashed for ${projectId}:`, reason);
-        shutdown(1);
+        writeWorkerLog("worker.crash", {
+          projectId,
+          pid: process.pid,
+          source: "unhandledRejection",
+          error: reason,
+        });
+        shutdown(1, "unhandledRejection");
       });
 
       writeLifecycleWorkerPid(config, projectId, process.pid);
-      console.log(
-        `[ao lifecycle] Started for ${projectId} (pid=${process.pid}, interval=${intervalMs}ms)`,
-      );
+      writeWorkerLog("worker.started", {
+        projectId,
+        pid: process.pid,
+        intervalMs,
+      });
 
       // Periodic heartbeat so we can verify the worker is alive from the log
       heartbeat = setInterval(() => {
-        console.log(`[ao lifecycle] Heartbeat for ${projectId} (pid=${process.pid})`);
+        writeWorkerLog("worker.heartbeat", {
+          projectId,
+          pid: process.pid,
+        });
       }, 5 * 60_000); // every 5 minutes
       heartbeat.unref();
 

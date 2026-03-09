@@ -170,6 +170,97 @@ interface ReactionTracker {
   firstTriggered: Date;
 }
 
+interface LifecyclePollStats {
+  pollId: string;
+  startedAtMs: number;
+  totalSessions: number;
+  checkedSessions: number;
+  activeSessions: number;
+  transitions: number;
+  errors: number;
+  notificationsSent: number;
+  notificationFailures: number;
+}
+
+type LifecycleLogLevel = "info" | "error";
+
+function serializeLogValue(value: unknown): unknown {
+  if (value instanceof Error) {
+    const cause = value.cause === undefined ? undefined : serializeLogValue(value.cause);
+    return {
+      name: value.name,
+      message: value.message,
+      ...(value.stack ? { stack: value.stack } : {}),
+      ...(cause !== undefined ? { cause } : {}),
+    };
+  }
+
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)) as unknown;
+  } catch {
+    return String(value);
+  }
+}
+
+function serializeLogFields(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => [key, serializeLogValue(value)]),
+  );
+}
+
+function logLifecycle(
+  level: LifecycleLogLevel,
+  event: string,
+  fields: Record<string, unknown> = {},
+): void {
+  console.log(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      scope: "lifecycle",
+      level,
+      event,
+      ...serializeLogFields(fields),
+    }),
+  );
+}
+
+function incrementPollError(pollStats?: LifecyclePollStats): void {
+  if (pollStats) {
+    pollStats.errors += 1;
+  }
+}
+
+function createPollStats(): LifecyclePollStats {
+  return {
+    pollId: randomUUID(),
+    startedAtMs: Date.now(),
+    totalSessions: 0,
+    checkedSessions: 0,
+    activeSessions: 0,
+    transitions: 0,
+    errors: 0,
+    notificationsSent: 0,
+    notificationFailures: 0,
+  };
+}
+
 /** Create a LifecycleManager instance. */
 export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleManager {
   const { config, registry, sessionManager, projectId: scopedProjectId } = deps;
@@ -194,13 +285,17 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   }
 
   /** Determine current status for a session by polling plugins. */
-  async function determineStatus(session: Session): Promise<SessionStatus> {
+  async function determineStatus(
+    session: Session,
+    pollStats?: LifecyclePollStats,
+  ): Promise<SessionStatus> {
     const project = config.projects[session.projectId];
     if (!project) return session.status;
 
     const agentName = session.metadata["agent"] ?? project.agent ?? config.defaults.agent;
     const agent = registry.get<Agent>("agent", agentName);
     const scm = project.scm ? registry.get<SCM>("scm", project.scm.plugin) : null;
+    const scmPlugin = project.scm?.plugin ?? "unknown";
 
     // Track activity state across steps so stuck detection can run after PR checks
     let detectedIdleTimestamp: Date | null = null;
@@ -209,7 +304,17 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     if (session.runtimeHandle) {
       const runtime = registry.get<Runtime>("runtime", project.runtime ?? config.defaults.runtime);
       if (runtime) {
-        const alive = await runtime.isAlive(session.runtimeHandle).catch(() => true);
+        const alive = await runtime.isAlive(session.runtimeHandle).catch((error: unknown) => {
+          incrementPollError(pollStats);
+          logLifecycle("error", "runtime.health_check.failed", {
+            pollId: pollStats?.pollId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            runtimeName: project.runtime ?? config.defaults.runtime,
+            error,
+          });
+          return true;
+        });
         if (!alive) return "killed";
       }
     }
@@ -257,7 +362,15 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             if (!processAlive) return "killed";
           }
         }
-      } catch {
+      } catch (error) {
+        incrementPollError(pollStats);
+        logLifecycle("error", "agent.activity_check.failed", {
+          pollId: pollStats?.pollId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          agentName,
+          error,
+        });
         // On probe failure, preserve current stuck/needs_input state rather
         // than letting the fallback at the bottom coerce them to "working"
         if (
@@ -283,7 +396,16 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           const sessionsDir = getSessionsDir(config.configPath, project.path);
           updateMetadata(sessionsDir, session.id, { pr: detectedPR.url });
         }
-      } catch {
+      } catch (error) {
+        incrementPollError(pollStats);
+        logLifecycle("error", "scm.pr_detect.failed", {
+          pollId: pollStats?.pollId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          scm: scmPlugin,
+          branch: session.branch,
+          error,
+        });
         // SCM detection failed — will retry next poll
       }
     }
@@ -322,7 +444,16 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         }
 
         return "pr_open";
-      } catch {
+      } catch (error) {
+        incrementPollError(pollStats);
+        logLifecycle("error", "scm.pr_check.failed", {
+          pollId: pollStats?.pollId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          scm: scmPlugin,
+          pr: session.pr,
+          error,
+        });
         // SCM check failed — keep current status
       }
     }
@@ -350,6 +481,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     projectId: string,
     reactionKey: string,
     reactionConfig: ReactionConfig,
+    pollStats?: LifecyclePollStats,
   ): Promise<ReactionResult> {
     const trackerKey = `${sessionId}:${reactionKey}`;
     let tracker = reactionTrackers.get(trackerKey);
@@ -390,7 +522,14 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         message: `Reaction '${reactionKey}' escalated after ${tracker.attempts} attempts`,
         data: { reactionKey, attempts: tracker.attempts },
       });
-      await notifyHuman(event, reactionConfig.priority ?? "urgent");
+      logLifecycle("info", "reaction.escalated", {
+        pollId: pollStats?.pollId,
+        projectId,
+        sessionId,
+        reactionKey,
+        attempts: tracker.attempts,
+      });
+      await notifyHuman(event, reactionConfig.priority ?? "urgent", pollStats);
       return {
         reactionType: reactionKey,
         success: true,
@@ -407,6 +546,13 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         if (reactionConfig.message) {
           try {
             await sessionManager.send(sessionId, reactionConfig.message);
+            logLifecycle("info", "reaction.sent_to_agent", {
+              pollId: pollStats?.pollId,
+              projectId,
+              sessionId,
+              reactionKey,
+              action,
+            });
 
             return {
               reactionType: reactionKey,
@@ -415,7 +561,16 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
               message: reactionConfig.message,
               escalated: false,
             };
-          } catch {
+          } catch (error) {
+            incrementPollError(pollStats);
+            logLifecycle("error", "reaction.send_to_agent.failed", {
+              pollId: pollStats?.pollId,
+              projectId,
+              sessionId,
+              reactionKey,
+              action,
+              error,
+            });
             // Send failed — allow retry on next poll cycle (don't escalate immediately)
             return {
               reactionType: reactionKey,
@@ -435,7 +590,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           message: `Reaction '${reactionKey}' triggered notification`,
           data: { reactionKey },
         });
-        await notifyHuman(event, reactionConfig.priority ?? "info");
+        await notifyHuman(event, reactionConfig.priority ?? "info", pollStats);
         return {
           reactionType: reactionKey,
           success: true,
@@ -453,7 +608,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           message: `Reaction '${reactionKey}' triggered auto-merge`,
           data: { reactionKey },
         });
-        await notifyHuman(event, "action");
+        await notifyHuman(event, "action", pollStats);
         return {
           reactionType: reactionKey,
           success: true,
@@ -488,10 +643,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     return reactionConfig ? (reactionConfig as ReactionConfig) : null;
   }
 
-  function updateSessionMetadata(
-    session: Session,
-    updates: Partial<Record<string, string>>,
-  ): void {
+  function updateSessionMetadata(session: Session, updates: Partial<Record<string, string>>): void {
     const project = config.projects[session.projectId];
     if (!project) return;
 
@@ -520,6 +672,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     oldStatus: SessionStatus,
     newStatus: SessionStatus,
     transitionReaction?: { key: string; result: ReactionResult | null },
+    pollStats?: LifecyclePollStats,
   ): Promise<void> {
     const project = config.projects[session.projectId];
     if (!project || !session.pr) return;
@@ -551,6 +704,27 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // null means "failed to fetch" — preserve existing metadata.
     // [] means "confirmed no comments" — safe to clear.
+    if (pendingResult.status === "rejected") {
+      incrementPollError(pollStats);
+      logLifecycle("error", "review.pending_comments.failed", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        pr: session.pr,
+        error: pendingResult.reason,
+      });
+    }
+    if (automatedResult.status === "rejected") {
+      incrementPollError(pollStats);
+      logLifecycle("error", "review.automated_comments.failed", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        pr: session.pr,
+        error: automatedResult.reason,
+      });
+    }
+
     const pendingComments =
       pendingResult.status === "fulfilled" && Array.isArray(pendingResult.value)
         ? pendingResult.value
@@ -562,11 +736,6 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // --- Pending (human) review comments ---
     // null = SCM fetch failed; skip processing to preserve existing metadata.
-    if (pendingComments === null) {
-      console.debug(
-        `[ao lifecycle] Pending comments fetch failed for ${session.id}, preserving existing metadata`,
-      );
-    }
     if (pendingComments !== null) {
       const pendingFingerprint = makeFingerprint(pendingComments.map((comment) => comment.id));
       const lastPendingFingerprint = session.metadata["lastPendingReviewFingerprint"] ?? "";
@@ -616,6 +785,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             session.projectId,
             humanReactionKey,
             reactionConfig,
+            pollStats,
           );
           if (result.success) {
             updateSessionMetadata(session, {
@@ -628,18 +798,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
 
     // --- Automated (bot) review comments ---
-    if (automatedComments === null) {
-      console.debug(
-        `[ao lifecycle] Automated comments fetch failed for ${session.id}, preserving existing metadata`,
-      );
-    }
     if (automatedComments !== null) {
-      const automatedFingerprint = makeFingerprint(
-        automatedComments.map((comment) => comment.id),
-      );
+      const automatedFingerprint = makeFingerprint(automatedComments.map((comment) => comment.id));
       const lastAutomatedFingerprint = session.metadata["lastAutomatedReviewFingerprint"] ?? "";
-      const lastAutomatedDispatchHash =
-        session.metadata["lastAutomatedReviewDispatchHash"] ?? "";
+      const lastAutomatedDispatchHash = session.metadata["lastAutomatedReviewDispatchHash"] ?? "";
 
       if (automatedFingerprint !== lastAutomatedFingerprint) {
         clearReactionTracker(session.id, automatedReactionKey);
@@ -667,6 +829,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             session.projectId,
             automatedReactionKey,
             reactionConfig,
+            pollStats,
           );
           if (result.success) {
             updateSessionMetadata(session, {
@@ -680,34 +843,103 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   }
 
   /** Send a notification to all configured notifiers. */
-  async function notifyHuman(event: OrchestratorEvent, priority: EventPriority): Promise<void> {
+  async function notifyHuman(
+    event: OrchestratorEvent,
+    priority: EventPriority,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
     const eventWithPriority = { ...event, priority };
     const notifierNames = config.notificationRouting[priority] ?? config.defaults.notifiers;
 
+    if (notifierNames.length === 0) {
+      logLifecycle("info", "notification.skipped", {
+        pollId: pollStats?.pollId,
+        projectId: event.projectId,
+        sessionId: event.sessionId,
+        priority,
+        eventType: event.type,
+        reason: "no_notifiers_configured",
+      });
+      return;
+    }
+
     for (const name of notifierNames) {
       const notifier = registry.get<Notifier>("notifier", name);
-      if (notifier) {
-        try {
-          await notifier.notify(eventWithPriority);
-        } catch {
-          // Notifier failed — not much we can do
+      if (!notifier) {
+        incrementPollError(pollStats);
+        if (pollStats) {
+          pollStats.notificationFailures += 1;
         }
+        logLifecycle("error", "notification.missing_notifier", {
+          pollId: pollStats?.pollId,
+          projectId: event.projectId,
+          sessionId: event.sessionId,
+          notifier: name,
+          priority,
+          eventType: event.type,
+        });
+        continue;
+      }
+
+      try {
+        await notifier.notify(eventWithPriority);
+        if (pollStats) {
+          pollStats.notificationsSent += 1;
+        }
+        logLifecycle("info", "notification.sent", {
+          pollId: pollStats?.pollId,
+          projectId: event.projectId,
+          sessionId: event.sessionId,
+          notifier: name,
+          priority,
+          eventType: event.type,
+        });
+      } catch (error) {
+        incrementPollError(pollStats);
+        if (pollStats) {
+          pollStats.notificationFailures += 1;
+        }
+        logLifecycle("error", "notification.failed", {
+          pollId: pollStats?.pollId,
+          projectId: event.projectId,
+          sessionId: event.sessionId,
+          notifier: name,
+          priority,
+          eventType: event.type,
+          error,
+        });
       }
     }
   }
 
   /** Poll a single session and handle state transitions. */
-  async function checkSession(session: Session): Promise<void> {
+  async function checkSession(session: Session, pollStats?: LifecyclePollStats): Promise<void> {
     // Use tracked state if available; otherwise use the persisted metadata status
     // (not session.status, which list() may have already overwritten for dead runtimes).
     // This ensures transitions are detected after a lifecycle manager restart.
     const tracked = states.get(session.id);
     const oldStatus =
       tracked ?? ((session.metadata?.["status"] as SessionStatus | undefined) || session.status);
-    const newStatus = await determineStatus(session);
+    const newStatus = await determineStatus(session, pollStats);
     let transitionReaction: { key: string; result: ReactionResult | null } | undefined;
 
     if (newStatus !== oldStatus) {
+      if (pollStats) {
+        pollStats.transitions += 1;
+      }
+
+      const eventType = statusToEventType(oldStatus, newStatus);
+      const reactionKey = eventType ? eventToReactionKey(eventType) : null;
+      logLifecycle("info", "session.transition", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        oldStatus,
+        newStatus,
+        eventType,
+        reactionKey,
+      });
+
       // State transition detected
       states.set(session.id, newStatus);
       updateSessionMetadata(session, { status: newStatus });
@@ -727,10 +959,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
 
       // Handle transition: notify humans and/or trigger reactions
-      const eventType = statusToEventType(oldStatus, newStatus);
       if (eventType) {
         let reactionHandledNotify = false;
-        const reactionKey = eventToReactionKey(eventType);
 
         if (reactionKey) {
           const reactionConfig = getReactionConfigForSession(session, reactionKey);
@@ -743,6 +973,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 session.projectId,
                 reactionKey,
                 reactionConfig,
+                pollStats,
               );
               transitionReaction = { key: reactionKey, result: reactionResult };
               // Reaction is handling this event — suppress immediate human notification.
@@ -765,7 +996,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             message: `${session.id}: ${oldStatus} → ${newStatus}`,
             data: { oldStatus, newStatus },
           });
-          await notifyHuman(event, priority);
+          await notifyHuman(event, priority, pollStats);
         }
       }
     } else {
@@ -773,14 +1004,26 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       states.set(session.id, newStatus);
     }
 
-    await maybeDispatchReviewBacklog(session, oldStatus, newStatus, transitionReaction);
+    await maybeDispatchReviewBacklog(session, oldStatus, newStatus, transitionReaction, pollStats);
   }
 
   /** Run one polling cycle across all sessions. */
   async function pollAll(): Promise<void> {
     // Re-entrancy guard: skip if previous poll is still running
-    if (polling) return;
+    if (polling) {
+      logLifecycle("info", "poll.skipped", {
+        projectId: scopedProjectId ?? "all",
+        reason: "previous_poll_still_running",
+      });
+      return;
+    }
     polling = true;
+    const pollStats = createPollStats();
+
+    logLifecycle("info", "poll.start", {
+      pollId: pollStats.pollId,
+      projectId: scopedProjectId ?? "all",
+    });
 
     try {
       const sessions = await sessionManager.list(scopedProjectId);
@@ -794,8 +1037,34 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         return tracked !== undefined && tracked !== s.status;
       });
 
+      const activeSessions = sessions.filter((s) => s.status !== "merged" && s.status !== "killed");
+      pollStats.totalSessions = sessions.length;
+      pollStats.checkedSessions = sessionsToCheck.length;
+      pollStats.activeSessions = activeSessions.length;
+
+      logLifecycle("info", "poll.sessions_loaded", {
+        pollId: pollStats.pollId,
+        projectId: scopedProjectId ?? "all",
+        totalSessions: pollStats.totalSessions,
+        checkedSessions: pollStats.checkedSessions,
+        activeSessions: pollStats.activeSessions,
+      });
+
       // Poll all sessions concurrently
-      await Promise.allSettled(sessionsToCheck.map((s) => checkSession(s)));
+      const results = await Promise.allSettled(
+        sessionsToCheck.map((s) => checkSession(s, pollStats)),
+      );
+      for (const [index, result] of results.entries()) {
+        if (result.status === "rejected") {
+          incrementPollError(pollStats);
+          logLifecycle("error", "poll.session_failed", {
+            pollId: pollStats.pollId,
+            projectId: sessionsToCheck[index]?.projectId,
+            sessionId: sessionsToCheck[index]?.id,
+            error: result.reason,
+          });
+        }
+      }
 
       // Prune stale entries from states and reactionTrackers for sessions
       // that no longer appear in the session list (e.g., after kill/cleanup)
@@ -813,7 +1082,6 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
 
       // Check if all sessions are complete (trigger reaction only once)
-      const activeSessions = sessions.filter((s) => s.status !== "merged" && s.status !== "killed");
       if (sessions.length > 0 && activeSessions.length === 0 && !allCompleteEmitted) {
         allCompleteEmitted = true;
 
@@ -823,14 +1091,37 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           const reactionConfig = config.reactions[reactionKey];
           if (reactionConfig && reactionConfig.action) {
             if (reactionConfig.auto !== false || reactionConfig.action === "notify") {
-              await executeReaction("system", "all", reactionKey, reactionConfig as ReactionConfig);
+              await executeReaction(
+                "system",
+                "all",
+                reactionKey,
+                reactionConfig as ReactionConfig,
+                pollStats,
+              );
             }
           }
         }
       }
     } catch (err) {
-      console.error("[ao lifecycle] Poll cycle failed:", err);
+      incrementPollError(pollStats);
+      logLifecycle("error", "poll.failed", {
+        pollId: pollStats.pollId,
+        projectId: scopedProjectId ?? "all",
+        error: err,
+      });
     } finally {
+      logLifecycle("info", "poll.end", {
+        pollId: pollStats.pollId,
+        projectId: scopedProjectId ?? "all",
+        totalSessions: pollStats.totalSessions,
+        checkedSessions: pollStats.checkedSessions,
+        activeSessions: pollStats.activeSessions,
+        transitions: pollStats.transitions,
+        errors: pollStats.errors,
+        notificationsSent: pollStats.notificationsSent,
+        notificationFailures: pollStats.notificationFailures,
+        durationMs: Date.now() - pollStats.startedAtMs,
+      });
       polling = false;
     }
   }
