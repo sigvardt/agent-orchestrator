@@ -15,6 +15,7 @@ import {
   SESSION_STATUS,
   PR_STATE,
   CI_STATUS,
+  type CIStatus,
   type LifecycleManager,
   type SessionManager,
   type SessionId,
@@ -261,6 +262,35 @@ function createPollStats(): LifecyclePollStats {
   };
 }
 
+const OPEN_PR_STATUS_POLL_INTERVAL_MS = 60_000;
+
+interface OpenPREvaluation {
+  status: SessionStatus;
+  ciStatus: CIStatus;
+}
+
+function parseTimestampMs(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isOpenPRStatusPollDue(session: Session): boolean {
+  const lastPollAtMs = parseTimestampMs(session.metadata["lastPrStatusPollAt"]);
+  if (lastPollAtMs === null) return true;
+  return Date.now() - lastPollAtMs >= OPEN_PR_STATUS_POLL_INTERVAL_MS;
+}
+
+function shouldOverridePreservedPRStatus(status: SessionStatus): boolean {
+  return (
+    status === SESSION_STATUS.MERGED ||
+    status === SESSION_STATUS.KILLED ||
+    status === SESSION_STATUS.CI_FAILED ||
+    status === SESSION_STATUS.CHANGES_REQUESTED ||
+    status === SESSION_STATUS.MERGEABLE
+  );
+}
+
 /** Create a LifecycleManager instance. */
 export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleManager {
   const { config, registry, sessionManager, projectId: scopedProjectId } = deps;
@@ -284,13 +314,82 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     return idleMs > stuckThresholdMs;
   }
 
+  async function evaluateOpenPR(session: Session, scm: SCM): Promise<OpenPREvaluation> {
+    if (!session.pr) {
+      return {
+        status: SESSION_STATUS.WORKING,
+        ciStatus: CI_STATUS.NONE,
+      };
+    }
+
+    const prState = await scm.getPRState(session.pr);
+    if (prState === PR_STATE.MERGED) {
+      return {
+        status: SESSION_STATUS.MERGED,
+        ciStatus: CI_STATUS.NONE,
+      };
+    }
+    if (prState === PR_STATE.CLOSED) {
+      return {
+        status: SESSION_STATUS.KILLED,
+        ciStatus: CI_STATUS.NONE,
+      };
+    }
+
+    const ciStatus = await scm.getCISummary(session.pr);
+    if (ciStatus === CI_STATUS.FAILING) {
+      return {
+        status: SESSION_STATUS.CI_FAILED,
+        ciStatus,
+      };
+    }
+
+    const reviewDecision = await scm.getReviewDecision(session.pr);
+    if (reviewDecision === "changes_requested") {
+      return {
+        status: SESSION_STATUS.CHANGES_REQUESTED,
+        ciStatus,
+      };
+    }
+
+    if (reviewDecision === "approved" || reviewDecision === "none") {
+      const mergeReady = await scm.getMergeability(session.pr);
+      if (mergeReady.mergeable) {
+        return {
+          status: SESSION_STATUS.MERGEABLE,
+          ciStatus,
+        };
+      }
+
+      if (reviewDecision === "approved") {
+        return {
+          status: SESSION_STATUS.APPROVED,
+          ciStatus,
+        };
+      }
+    }
+
+    if (reviewDecision === "pending") {
+      return {
+        status: SESSION_STATUS.REVIEW_PENDING,
+        ciStatus,
+      };
+    }
+
+    return {
+      status: SESSION_STATUS.PR_OPEN,
+      ciStatus,
+    };
+  }
+
   /** Determine current status for a session by polling plugins. */
   async function determineStatus(
     session: Session,
+    currentStatus: SessionStatus,
     pollStats?: LifecyclePollStats,
   ): Promise<SessionStatus> {
     const project = config.projects[session.projectId];
-    if (!project) return session.status;
+    if (!project) return currentStatus;
 
     const agentName = session.metadata["agent"] ?? project.agent ?? config.defaults.agent;
     const agent = registry.get<Agent>("agent", agentName);
@@ -299,6 +398,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // Track activity state across steps so stuck detection can run after PR checks
     let detectedIdleTimestamp: Date | null = null;
+    let preserveCurrentStatus = false;
 
     // 1. Check if runtime is alive
     if (session.runtimeHandle) {
@@ -374,10 +474,14 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         // On probe failure, preserve current stuck/needs_input state rather
         // than letting the fallback at the bottom coerce them to "working"
         if (
-          session.status === SESSION_STATUS.STUCK ||
-          session.status === SESSION_STATUS.NEEDS_INPUT
+          currentStatus === SESSION_STATUS.STUCK ||
+          currentStatus === SESSION_STATUS.NEEDS_INPUT
         ) {
-          return session.status;
+          if (!session.pr) {
+            return currentStatus;
+          }
+
+          preserveCurrentStatus = true;
         }
       }
     }
@@ -412,27 +516,40 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // 4. Check PR state if PR exists
     if (session.pr && scm) {
-      try {
-        const prState = await scm.getPRState(session.pr);
-        if (prState === PR_STATE.MERGED) return "merged";
-        if (prState === PR_STATE.CLOSED) return "killed";
-
-        // Check CI
-        const ciStatus = await scm.getCISummary(session.pr);
-        if (ciStatus === CI_STATUS.FAILING) return "ci_failed";
-
-        // Check reviews
-        const reviewDecision = await scm.getReviewDecision(session.pr);
-        if (reviewDecision === "changes_requested") return "changes_requested";
-        if (reviewDecision === "approved" || reviewDecision === "none") {
-          // Check merge readiness — treat "none" (no reviewers required)
-          // the same as "approved" so CI-green PRs reach "mergeable" status
-          // and fire the merge.ready event / approved-and-green reaction.
-          const mergeReady = await scm.getMergeability(session.pr);
-          if (mergeReady.mergeable) return "mergeable";
-          if (reviewDecision === "approved") return "approved";
+      if (!isOpenPRStatusPollDue(session)) {
+        if (
+          detectedIdleTimestamp &&
+          isIdleBeyondThreshold(session, detectedIdleTimestamp) &&
+          currentStatus === SESSION_STATUS.PR_OPEN
+        ) {
+          return SESSION_STATUS.STUCK;
         }
-        if (reviewDecision === "pending") return "review_pending";
+
+        return currentStatus;
+      }
+
+      try {
+        const openPREvaluation = await evaluateOpenPR(session, scm);
+        updateSessionMetadata(session, {
+          lastPrStatusPollAt: new Date().toISOString(),
+          lastPrCiStatus: openPREvaluation.ciStatus,
+        });
+
+        if (shouldOverridePreservedPRStatus(openPREvaluation.status)) {
+          return openPREvaluation.status;
+        }
+
+        if (preserveCurrentStatus) {
+          return currentStatus;
+        }
+
+        if (openPREvaluation.status === SESSION_STATUS.APPROVED) {
+          return SESSION_STATUS.APPROVED;
+        }
+
+        if (openPREvaluation.status === SESSION_STATUS.REVIEW_PENDING) {
+          return SESSION_STATUS.REVIEW_PENDING;
+        }
 
         // 4b. Post-PR stuck detection: agent has a PR open but is idle beyond
         // threshold. This catches the case where step 2's stuck check was
@@ -440,10 +557,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         // wasn't available during step 2 but the session has been at pr_open
         // for a long time. Without this, sessions get stuck at "pr_open" forever.
         if (detectedIdleTimestamp && isIdleBeyondThreshold(session, detectedIdleTimestamp)) {
-          return "stuck";
+          return SESSION_STATUS.STUCK;
         }
 
-        return "pr_open";
+        return openPREvaluation.status;
       } catch (error) {
         incrementPollError(pollStats);
         logLifecycle("error", "scm.pr_check.failed", {
@@ -454,8 +571,14 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           pr: session.pr,
           error,
         });
-        // SCM check failed — keep current status
+        if (preserveCurrentStatus) {
+          return currentStatus;
+        }
       }
+    }
+
+    if (preserveCurrentStatus) {
+      return currentStatus;
     }
 
     // 5. Post-all stuck detection: if we detected idle in step 2 but had no PR,
@@ -466,13 +589,13 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // 6. Default: if agent is active, it's working
     if (
-      session.status === "spawning" ||
-      session.status === SESSION_STATUS.STUCK ||
-      session.status === SESSION_STATUS.NEEDS_INPUT
+      currentStatus === SESSION_STATUS.SPAWNING ||
+      currentStatus === SESSION_STATUS.STUCK ||
+      currentStatus === SESSION_STATUS.NEEDS_INPUT
     ) {
-      return "working";
+      return SESSION_STATUS.WORKING;
     }
-    return session.status;
+    return currentStatus;
   }
 
   /** Execute a reaction for a session. */
@@ -693,6 +816,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         lastAutomatedReviewFingerprint: "",
         lastAutomatedReviewDispatchHash: "",
         lastAutomatedReviewDispatchAt: "",
+        lastPrStatusPollAt: "",
+        lastPrCiStatus: "",
       });
       return;
     }
@@ -920,7 +1045,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     const tracked = states.get(session.id);
     const oldStatus =
       tracked ?? ((session.metadata?.["status"] as SessionStatus | undefined) || session.status);
-    const newStatus = await determineStatus(session, pollStats);
+    const newStatus = await determineStatus(session, oldStatus, pollStats);
     let transitionReaction: { key: string; result: ReactionResult | null } | undefined;
 
     if (newStatus !== oldStatus) {
