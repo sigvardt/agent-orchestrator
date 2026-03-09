@@ -168,6 +168,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
+
   // Clean up hash-based directories in ~/.agent-orchestrator
   const projectBaseDir = getProjectBaseDir(configPath, join(tmpDir, "my-app"));
   if (existsSync(projectBaseDir)) {
@@ -624,6 +626,182 @@ describe("check (single session)", () => {
     await lm.check("app-1");
 
     expect(lm.getStates().get("app-1")).toBe("ci_failed");
+  });
+
+  it("rechecks stuck sessions with open PRs and throttles CI polling", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-09T10:00:00.000Z"));
+
+    config.reactions = {
+      "ci-failed": {
+        auto: true,
+        action: "send-to-agent",
+        message: "Fix CI",
+      },
+    };
+
+    vi.mocked(mockAgent.getActivityState).mockRejectedValue(new Error("probe failed"));
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi
+        .fn()
+        .mockResolvedValueOnce("pending")
+        .mockResolvedValueOnce("failing")
+        .mockResolvedValueOnce("failing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("none"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn().mockResolvedValue({
+        mergeable: false,
+        ciPassing: false,
+        approved: false,
+        noConflicts: true,
+        blockers: ["ci"],
+      }),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        return null;
+      }),
+    };
+
+    const session = makeSession({ status: "stuck", pr: makePR() });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "stuck",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("stuck");
+    expect(mockSCM.getCISummary).toHaveBeenCalledTimes(1);
+    expect(mockSessionManager.send).not.toHaveBeenCalled();
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["lastPrCiStatus"]).toBe("pending");
+
+    await lm.check("app-1");
+
+    expect(mockSCM.getCISummary).toHaveBeenCalledTimes(1);
+    expect(mockSessionManager.send).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date("2026-03-09T10:01:01.000Z"));
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("ci_failed");
+    expect(mockSCM.getCISummary).toHaveBeenCalledTimes(2);
+    expect(mockSessionManager.send).toHaveBeenCalledTimes(1);
+    expect(mockSessionManager.send).toHaveBeenCalledWith("app-1", "Fix CI");
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["lastPrCiStatus"]).toBe("failing");
+
+    vi.setSystemTime(new Date("2026-03-09T10:02:02.000Z"));
+    await lm.check("app-1");
+
+    expect(mockSCM.getCISummary).toHaveBeenCalledTimes(3);
+    expect(mockSessionManager.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("promotes a stuck PR to mergeable when CI passes and no review is required", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-09T11:00:00.000Z"));
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    vi.mocked(mockAgent.getActivityState).mockRejectedValue(new Error("probe failed"));
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("none"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi
+        .fn()
+        .mockResolvedValueOnce({
+          mergeable: false,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: ["not-ready"],
+        })
+        .mockResolvedValueOnce({
+          mergeable: true,
+          ciPassing: true,
+          approved: true,
+          noConflicts: true,
+          blockers: [],
+        }),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const session = makeSession({ status: "stuck", pr: makePR() });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "stuck",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("stuck");
+    expect(mockNotifier.notify).not.toHaveBeenCalled();
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["lastPrCiStatus"]).toBe("passing");
+
+    vi.setSystemTime(new Date("2026-03-09T11:01:01.000Z"));
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("mergeable");
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "merge.ready" }),
+    );
   });
 
   it("skips PR auto-detection when metadata disables it", async () => {
