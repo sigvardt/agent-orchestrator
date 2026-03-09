@@ -28,6 +28,8 @@ let mockRuntime: Runtime;
 let mockAgent: Agent;
 let mockRegistry: PluginRegistry;
 let config: OrchestratorConfig;
+let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 function makeSession(overrides: Partial<Session> = {}): Session {
   return {
@@ -62,9 +64,25 @@ function makePR(overrides: Partial<PRInfo> = {}): PRInfo {
   };
 }
 
+function getLifecycleLogs(): Array<Record<string, unknown>> {
+  return consoleLogSpy.mock.calls.flatMap((call: unknown[]) => {
+    const message = call[0];
+    if (typeof message !== "string") return [];
+
+    try {
+      const parsed = JSON.parse(message) as unknown;
+      return parsed && typeof parsed === "object" ? [parsed as Record<string, unknown>] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
 beforeEach(() => {
   tmpDir = join(tmpdir(), `ao-test-lifecycle-${randomUUID()}`);
   mkdirSync(tmpDir, { recursive: true });
+  consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
   // Create a temporary config file
   configPath = join(tmpDir, "agent-orchestrator.yaml");
@@ -158,6 +176,8 @@ afterEach(() => {
 
   // Clean up tmpDir
   rmSync(tmpDir, { recursive: true, force: true });
+  consoleLogSpy.mockRestore();
+  consoleErrorSpy.mockRestore();
 });
 
 describe("start / stop", () => {
@@ -174,6 +194,160 @@ describe("start / stop", () => {
     lm.stop();
     // Should not throw on double stop
     lm.stop();
+  });
+});
+
+describe("poll logging", () => {
+  it("logs poll boundaries, transitions, and notification results", async () => {
+    config.notificationRouting.info = ["desktop"];
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const session = makeSession({ status: "spawning" });
+    vi.mocked(mockSessionManager.list).mockResolvedValue([session]);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "spawning",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    lm.start(60_000);
+
+    await vi.waitFor(() => {
+      expect(getLifecycleLogs().some((entry) => entry["event"] === "poll.end")).toBe(true);
+    });
+    lm.stop();
+
+    const logs = getLifecycleLogs();
+    const transitionLog = logs.find((entry) => entry["event"] === "session.transition");
+    const notificationLog = logs.find((entry) => entry["event"] === "notification.sent");
+    const pollEndLog = logs.find((entry) => entry["event"] === "poll.end");
+
+    expect(logs.some((entry) => entry["event"] === "poll.start")).toBe(true);
+    expect(logs.some((entry) => entry["event"] === "poll.sessions_loaded")).toBe(true);
+    expect(transitionLog).toEqual(
+      expect.objectContaining({
+        sessionId: "app-1",
+        oldStatus: "spawning",
+        newStatus: "working",
+        eventType: "session.working",
+      }),
+    );
+    expect(notificationLog).toEqual(
+      expect.objectContaining({
+        sessionId: "app-1",
+        notifier: "desktop",
+        eventType: "session.working",
+      }),
+    );
+    expect(pollEndLog).toEqual(
+      expect.objectContaining({
+        totalSessions: 1,
+        checkedSessions: 1,
+        activeSessions: 1,
+        transitions: 1,
+        errors: 0,
+        notificationsSent: 1,
+        notificationFailures: 0,
+      }),
+    );
+    expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs caught SCM polling errors in the poll summary", async () => {
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockRejectedValue(new Error("SCM exploded")),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn(),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn(),
+      getPendingComments: vi.fn(),
+      getAutomatedComments: vi.fn(),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        return null;
+      }),
+    };
+
+    const session = makeSession({ status: "pr_open", pr: makePR() });
+    vi.mocked(mockSessionManager.list).mockResolvedValue([session]);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "pr_open",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+    });
+
+    lm.start(60_000);
+
+    await vi.waitFor(() => {
+      expect(getLifecycleLogs().some((entry) => entry["event"] === "scm.pr_check.failed")).toBe(
+        true,
+      );
+      expect(getLifecycleLogs().some((entry) => entry["event"] === "poll.end")).toBe(true);
+    });
+    lm.stop();
+
+    const logs = getLifecycleLogs();
+    const errorLog = logs.find((entry) => entry["event"] === "scm.pr_check.failed");
+    const pollEndLog = logs.find((entry) => entry["event"] === "poll.end");
+
+    expect(errorLog).toEqual(
+      expect.objectContaining({
+        projectId: "my-app",
+        sessionId: "app-1",
+        scm: "github",
+      }),
+    );
+    expect((errorLog?.["error"] as Record<string, unknown> | undefined)?.["message"]).toBe(
+      "SCM exploded",
+    );
+    expect(pollEndLog).toEqual(
+      expect.objectContaining({
+        totalSessions: 1,
+        checkedSessions: 1,
+        errors: 1,
+      }),
+    );
   });
 });
 
