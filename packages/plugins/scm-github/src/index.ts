@@ -48,48 +48,31 @@ const BOT_AUTHORS = new Set([
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function gh(args: string[]): Promise<string> {
+async function execCli(bin: string, args: string[], cwd?: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("gh", args, {
+    const { stdout } = await execFileAsync(bin, args, {
+      ...(cwd ? { cwd } : {}),
       maxBuffer: 10 * 1024 * 1024,
       timeout: 30_000,
     });
     return stdout.trim();
   } catch (err) {
-    throw new Error(`gh ${args.slice(0, 3).join(" ")} failed: ${(err as Error).message}`, {
+    throw new Error(`${bin} ${args.slice(0, 3).join(" ")} failed: ${(err as Error).message}`, {
       cause: err,
     });
   }
+}
+
+async function gh(args: string[]): Promise<string> {
+  return execCli("gh", args);
 }
 
 async function ghInDir(args: string[], cwd: string): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync("gh", args, {
-      cwd,
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 30_000,
-    });
-    return stdout.trim();
-  } catch (err) {
-    throw new Error(`gh ${args.slice(0, 3).join(" ")} failed: ${(err as Error).message}`, {
-      cause: err,
-    });
-  }
+  return execCli("gh", args, cwd);
 }
 
 async function git(args: string[], cwd: string): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync("git", args, {
-      cwd,
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 30_000,
-    });
-    return stdout.trim();
-  } catch (err) {
-    throw new Error(`git ${args.slice(0, 3).join(" ")} failed: ${(err as Error).message}`, {
-      cause: err,
-    });
-  }
+  return execCli("git", args, cwd);
 }
 
 function parseProjectRepo(projectRepo: string): [string, string] {
