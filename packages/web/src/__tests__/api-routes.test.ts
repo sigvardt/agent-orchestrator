@@ -180,6 +180,7 @@ function makeRequest(url: string, init?: RequestInit): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockConfig.projects["my-app"]!.scm = { plugin: "github" };
   // Re-set default return values
   (mockSessionManager.list as ReturnType<typeof vi.fn>).mockResolvedValue(testSessions);
   (mockSessionManager.get as ReturnType<typeof vi.fn>).mockImplementation(
@@ -511,6 +512,26 @@ describe("API Routes", () => {
       const data = await res.json();
       expect(data.ok).toBe(true);
       expect(data.prNumber).toBe(432);
+      expect(data.method).toBe("squash");
+      expect(mockSCM.mergePR).toHaveBeenCalledWith(
+        expect.objectContaining({ number: 432 }),
+        "squash",
+      );
+    });
+
+    it("uses the configured SCM merge method", async () => {
+      mockConfig.projects["my-app"]!.scm = { plugin: "github", mergeMethod: "rebase" };
+
+      const req = makeRequest("/api/prs/432/merge", { method: "POST" });
+      const res = await mergePOST(req, { params: Promise.resolve({ id: "432" }) });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.method).toBe("rebase");
+      expect(mockSCM.mergePR).toHaveBeenCalledWith(
+        expect.objectContaining({ number: 432 }),
+        "rebase",
+      );
     });
 
     it("returns 404 for unknown PR", async () => {

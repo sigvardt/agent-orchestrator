@@ -1,3 +1,4 @@
+import { resolveMergeMethod } from "@composio/ao-core";
 import { type NextRequest, NextResponse } from "next/server";
 import { getServices, getSCM } from "@/lib/services";
 
@@ -41,8 +42,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    await scm.mergePR(session.pr, "squash");
-    return NextResponse.json({ ok: true, prNumber, method: "squash" });
+    const mergeMethod = resolveMergeMethod(project?.scm);
+    await scm.mergePR(session.pr, mergeMethod);
+    return NextResponse.json({ ok: true, prNumber, method: mergeMethod });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to merge PR" },

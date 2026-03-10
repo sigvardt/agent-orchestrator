@@ -15,6 +15,7 @@ import {
   SESSION_STATUS,
   PR_STATE,
   CI_STATUS,
+  resolveMergeMethod,
   type CIStatus,
   type LifecycleManager,
   type SessionManager,
@@ -605,6 +606,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     reactionKey: string,
     reactionConfig: ReactionConfig,
     pollStats?: LifecyclePollStats,
+    session?: Session,
   ): Promise<ReactionResult> {
     const trackerKey = `${sessionId}:${reactionKey}`;
     let tracker = reactionTrackers.get(trackerKey);
@@ -723,21 +725,102 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
 
       case "auto-merge": {
-        // Auto-merge is handled by the SCM plugin
-        // For now, just notify
-        const event = createEvent("reaction.triggered", {
-          sessionId,
-          projectId,
-          message: `Reaction '${reactionKey}' triggered auto-merge`,
-          data: { reactionKey },
-        });
-        await notifyHuman(event, "action", pollStats);
-        return {
-          reactionType: reactionKey,
-          success: true,
-          action: "auto-merge",
-          escalated: false,
-        };
+        const project = config.projects[projectId];
+        const scm = project?.scm ? registry.get<SCM>("scm", project.scm.plugin) : null;
+        const mergeMethod = resolveMergeMethod(project?.scm);
+
+        if (!session?.pr || !project || !scm) {
+          incrementPollError(pollStats);
+          logLifecycle("error", "reaction.auto_merge.unavailable", {
+            pollId: pollStats?.pollId,
+            projectId,
+            sessionId,
+            reactionKey,
+            hasProject: Boolean(project),
+            hasPR: Boolean(session?.pr),
+            hasSCM: Boolean(scm),
+            mergeMethod,
+          });
+          const event = createEvent("reaction.triggered", {
+            sessionId,
+            projectId,
+            message: `Auto-merge could not run for reaction '${reactionKey}'. Manual intervention required.`,
+            data: { reactionKey, mergeMethod },
+          });
+          await notifyHuman(event, "urgent", pollStats);
+          return {
+            reactionType: reactionKey,
+            success: false,
+            action: "auto-merge",
+            message: "Auto-merge unavailable",
+            escalated: true,
+          };
+        }
+
+        try {
+          await scm.mergePR(session.pr, mergeMethod);
+          clearReactionTracker(session.id, reactionKey);
+          logLifecycle("info", "reaction.auto_merge.completed", {
+            pollId: pollStats?.pollId,
+            projectId,
+            sessionId,
+            reactionKey,
+            prNumber: session.pr.number,
+            mergeMethod,
+          });
+          const event = createEvent("merge.completed", {
+            sessionId,
+            projectId,
+            message: `${sessionId}: auto-merged PR #${session.pr.number}`,
+            data: {
+              reactionKey,
+              prNumber: session.pr.number,
+              prUrl: session.pr.url,
+              mergeMethod,
+            },
+          });
+          await notifyHuman(event, inferPriority(event.type), pollStats);
+          return {
+            reactionType: reactionKey,
+            success: true,
+            action: "auto-merge",
+            message: `Merged PR #${session.pr.number} with ${mergeMethod}`,
+            escalated: false,
+            resultingStatus: SESSION_STATUS.MERGED,
+          };
+        } catch (error) {
+          incrementPollError(pollStats);
+          logLifecycle("error", "reaction.auto_merge.failed", {
+            pollId: pollStats?.pollId,
+            projectId,
+            sessionId,
+            reactionKey,
+            prNumber: session.pr.number,
+            mergeMethod,
+            error,
+          });
+          const message = error instanceof Error ? error.message : String(error);
+          const event = createEvent("reaction.triggered", {
+            sessionId,
+            projectId,
+            message: `Auto-merge failed for PR #${session.pr.number}. Manual intervention required.`,
+            data: {
+              reactionKey,
+              prNumber: session.pr.number,
+              prUrl: session.pr.url,
+              mergeMethod,
+              error: message,
+            },
+          });
+          await notifyHuman(event, "urgent", pollStats);
+          return {
+            reactionType: reactionKey,
+            success: false,
+            action: "auto-merge",
+            message,
+            escalated: true,
+          };
+        }
       }
     }
 
@@ -911,6 +994,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             humanReactionKey,
             reactionConfig,
             pollStats,
+            session,
           );
           if (result.success) {
             updateSessionMetadata(session, {
@@ -955,6 +1039,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             automatedReactionKey,
             reactionConfig,
             pollStats,
+            session,
           );
           if (result.success) {
             updateSessionMetadata(session, {
@@ -1045,7 +1130,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     const tracked = states.get(session.id);
     const oldStatus =
       tracked ?? ((session.metadata?.["status"] as SessionStatus | undefined) || session.status);
-    const newStatus = await determineStatus(session, oldStatus, pollStats);
+    let newStatus = await determineStatus(session, oldStatus, pollStats);
     let transitionReaction: { key: string; result: ReactionResult | null } | undefined;
 
     if (newStatus !== oldStatus) {
@@ -1099,8 +1184,38 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 reactionKey,
                 reactionConfig,
                 pollStats,
+                session,
               );
               transitionReaction = { key: reactionKey, result: reactionResult };
+
+              if (
+                reactionResult.resultingStatus &&
+                reactionResult.resultingStatus !== newStatus
+              ) {
+                const finalStatus = reactionResult.resultingStatus;
+                const finalEventType = statusToEventType(newStatus, finalStatus);
+                const finalReactionKey = finalEventType ? eventToReactionKey(finalEventType) : null;
+
+                if (pollStats) {
+                  pollStats.transitions += 1;
+                }
+
+                logLifecycle("info", "session.transition", {
+                  pollId: pollStats?.pollId,
+                  projectId: session.projectId,
+                  sessionId: session.id,
+                  oldStatus: newStatus,
+                  newStatus: finalStatus,
+                  eventType: finalEventType,
+                  reactionKey: finalReactionKey,
+                  triggeredBy: reactionKey,
+                });
+
+                newStatus = finalStatus;
+                states.set(session.id, finalStatus);
+                updateSessionMetadata(session, { status: finalStatus });
+              }
+
               // Reaction is handling this event — suppress immediate human notification.
               // "send-to-agent" retries + escalates on its own; "notify"/"auto-merge"
               // already call notifyHuman internally. Notifying here would bypass the

@@ -9,6 +9,9 @@ projects:
     repo: owner/my-app
     path: ~/my-app
     defaultBranch: main
+    scm:
+      plugin: github
+      mergeMethod: squash
 
     # Enable auto-merge for this project
     reactions:

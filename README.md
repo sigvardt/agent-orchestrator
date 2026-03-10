@@ -119,6 +119,9 @@ projects:
     path: ~/my-app
     defaultBranch: main
     sessionPrefix: app
+    scm:
+      plugin: github
+      mergeMethod: squash   # merge | squash | rebase
 
 reactions:
   ci-failed:
@@ -130,7 +133,7 @@ reactions:
     action: send-to-agent
     escalateAfter: 30m
   approved-and-green:
-    auto: false       # flip to true for auto-merge
+    auto: false
     action: notify
 ```
 

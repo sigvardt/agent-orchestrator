@@ -404,6 +404,43 @@ describe("Config Defaults", () => {
     expect(validated.projects.proj1.scm).toEqual({ plugin: "github" });
   });
 
+  it("accepts SCM merge method overrides", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          scm: {
+            plugin: "github",
+            mergeMethod: "rebase",
+          },
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.projects.proj1.scm).toEqual({ plugin: "github", mergeMethod: "rebase" });
+  });
+
+  it("rejects invalid SCM merge method overrides", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          scm: {
+            plugin: "github",
+            mergeMethod: "fast-forward",
+          },
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow(/mergeMethod/);
+  });
+
   it("applies default tracker (GitHub issues)", () => {
     const config = {
       projects: {
