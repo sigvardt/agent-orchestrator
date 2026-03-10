@@ -5,6 +5,7 @@ import { PRStatus } from "@/components/PRStatus";
 import { SessionCard } from "@/components/SessionCard";
 import { AttentionZone } from "@/components/AttentionZone";
 import { ActivityDot } from "@/components/ActivityDot";
+import { UsagePanels } from "@/components/UsageDials";
 import { makeSession, makePR } from "./helpers";
 
 // ── ActivityDot ───────────────────────────────────────────────────────
@@ -430,6 +431,64 @@ describe("SessionCard", () => {
     const { container } = render(<SessionCard session={session} />);
     fireEvent.click(container.firstElementChild!);
     expect(screen.getByText("terminate")).toBeInTheDocument();
+  });
+});
+
+// ── UsagePanels ──────────────────────────────────────────────────────
+
+describe("UsagePanels", () => {
+  it("shows cached snapshot freshness and empty-state labels", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-10T12:00:00.000Z"));
+
+    render(
+      <UsagePanels
+        snapshots={[
+          {
+            provider: "codex",
+            plan: "ChatGPT Pro",
+            capturedAt: "2026-03-10T10:00:00.000Z",
+            source: "cached",
+            dials: [
+              {
+                id: "codex-5h",
+                label: "5 hour usage limit",
+                kind: "percent_remaining",
+                status: "available",
+                value: 84,
+                maxValue: 100,
+                displayValue: "84%",
+                resetsAt: null,
+              },
+            ],
+          },
+          {
+            provider: "claude-code",
+            plan: null,
+            capturedAt: null,
+            source: "empty",
+            dials: [
+              {
+                id: "claude-current-session",
+                label: "Current session usage",
+                kind: "percent_used",
+                status: "unavailable",
+                value: null,
+                maxValue: 100,
+                displayValue: "--",
+                resetsAt: null,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Cached snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Last updated 2 hours ago")).toBeInTheDocument();
+    expect(screen.getAllByText("No data yet").length).toBeGreaterThan(0);
+
+    vi.useRealTimers();
   });
 });
 

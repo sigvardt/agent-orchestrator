@@ -57,7 +57,8 @@ export function UsageOverview({ refreshIntervalMs = 60_000 }: UsageOverviewProps
           Subscription Usage
         </h2>
         <p className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-          Live subscription dials from active Codex and Claude Code sessions.
+          Live subscription dials when sessions are active, with last-known snapshots when they are
+          not.
         </p>
       </div>
 

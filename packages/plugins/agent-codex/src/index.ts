@@ -17,7 +17,17 @@ import {
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { writeFile, mkdir, readFile, readdir, rename, stat, lstat, open } from "node:fs/promises";
+import {
+  writeFile,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  stat,
+  lstat,
+  open,
+  realpath,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -26,10 +36,17 @@ import { randomBytes } from "node:crypto";
 
 const execFileAsync = promisify(execFile);
 
-function normalizePermissionMode(mode: string | undefined): "permissionless" | "default" | "auto-edit" | "suggest" | undefined {
+function normalizePermissionMode(
+  mode: string | undefined,
+): "permissionless" | "default" | "auto-edit" | "suggest" | undefined {
   if (!mode) return undefined;
   if (mode === "skip") return "permissionless";
-  if (mode === "permissionless" || mode === "default" || mode === "auto-edit" || mode === "suggest") {
+  if (
+    mode === "permissionless" ||
+    mode === "default" ||
+    mode === "auto-edit" ||
+    mode === "suggest"
+  ) {
     return mode;
   }
   return undefined;
@@ -280,11 +297,7 @@ async function setupCodexWorkspace(workspacePath: string): Promise<void> {
   // 1. Write shared wrappers to ~/.ao/bin/
   await mkdir(AO_BIN_DIR, { recursive: true });
 
-  await atomicWriteFile(
-    join(AO_BIN_DIR, "ao-metadata-helper.sh"),
-    AO_METADATA_HELPER,
-    0o755,
-  );
+  await atomicWriteFile(join(AO_BIN_DIR, "ao-metadata-helper.sh"), AO_METADATA_HELPER, 0o755);
 
   // Only write wrappers if they don't exist or are outdated (check marker)
   const markerPath = join(AO_BIN_DIR, ".ao-version");
@@ -444,11 +457,35 @@ async function collectJsonlFiles(dir: string, depth = 0): Promise<string[]> {
 const SESSION_FILE_MATCH_CHUNK_BYTES = 4096;
 const SESSION_FILE_MATCH_MAX_BYTES = 64 * 1024;
 const SESSION_FILE_MATCH_MAX_LINES = 10;
+const canonicalPathCache = new Map<string, string>();
 
-async function sessionFileMatchesCwd(
-  filePath: string,
-  workspacePath: string,
-): Promise<boolean> {
+function normalizeComparablePath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  if (normalized === "/") {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/, "");
+}
+
+async function canonicalizeComparablePath(path: string): Promise<string> {
+  const normalized = normalizeComparablePath(path);
+  const cached = canonicalPathCache.get(normalized);
+  if (cached) {
+    return cached;
+  }
+
+  let canonical = normalized;
+  try {
+    canonical = normalizeComparablePath(await realpath(path));
+  } catch {
+    // Fall back to the original path when it can't be resolved on disk.
+  }
+
+  canonicalPathCache.set(normalized, canonical);
+  return canonical;
+}
+
+async function sessionFileMatchesCwd(filePath: string, workspacePath: string): Promise<boolean> {
   try {
     const handle = await open(filePath, "r");
     let content: string;
@@ -459,8 +496,14 @@ async function sessionFileMatchesCwd(
       let totalBytes = 0;
       let newlineCount = 0;
 
-      while (totalBytes < SESSION_FILE_MATCH_MAX_BYTES && newlineCount < SESSION_FILE_MATCH_MAX_LINES) {
-        const chunkSize = Math.min(SESSION_FILE_MATCH_CHUNK_BYTES, SESSION_FILE_MATCH_MAX_BYTES - totalBytes);
+      while (
+        totalBytes < SESSION_FILE_MATCH_MAX_BYTES &&
+        newlineCount < SESSION_FILE_MATCH_MAX_LINES
+      ) {
+        const chunkSize = Math.min(
+          SESSION_FILE_MATCH_CHUNK_BYTES,
+          SESSION_FILE_MATCH_MAX_BYTES - totalBytes,
+        );
         const buffer = Buffer.allocUnsafe(chunkSize);
         const { bytesRead } = await handle.read(buffer, 0, chunkSize, totalBytes);
         if (bytesRead === 0) break;
@@ -490,7 +533,7 @@ async function sessionFileMatchesCwd(
           typeof parsed === "object" &&
           parsed !== null &&
           !Array.isArray(parsed) &&
-          sessionMetaMatchesWorkspace(parsed as CodexJsonlLine, workspacePath)
+          (await sessionMetaMatchesWorkspace(parsed as CodexJsonlLine, workspacePath))
         ) {
           return true;
         }
@@ -504,9 +547,32 @@ async function sessionFileMatchesCwd(
   return false;
 }
 
-function sessionMetaMatchesWorkspace(entry: CodexJsonlLine, workspacePath: string): boolean {
+async function sessionMetaMatchesWorkspace(
+  entry: CodexJsonlLine,
+  workspacePath: string,
+): Promise<boolean> {
   if (entry.type !== "session_meta") return false;
-  return entry.cwd === workspacePath || entry.payload?.cwd === workspacePath;
+
+  const entryWorkspacePath = entry.cwd ?? entry.payload?.cwd;
+  if (!entryWorkspacePath) {
+    return false;
+  }
+
+  const normalizedWorkspacePath = normalizeComparablePath(workspacePath);
+  const normalizedEntryPath = normalizeComparablePath(entryWorkspacePath);
+  if (normalizedWorkspacePath === normalizedEntryPath) {
+    return true;
+  }
+
+  const canonicalWorkspacePath = await canonicalizeComparablePath(workspacePath);
+  if (canonicalWorkspacePath === normalizedEntryPath) {
+    return true;
+  }
+
+  const canonicalEntryPath = await canonicalizeComparablePath(entryWorkspacePath);
+  return (
+    canonicalWorkspacePath === canonicalEntryPath || normalizedWorkspacePath === canonicalEntryPath
+  );
 }
 
 /**
@@ -579,10 +645,7 @@ function extractTokenUsage(
     };
   }
 
-  if (
-    typeof message.input_tokens === "number" ||
-    typeof message.output_tokens === "number"
-  ) {
+  if (typeof message.input_tokens === "number" || typeof message.output_tokens === "number") {
     return {
       inputTokens: message.input_tokens ?? 0,
       outputTokens: message.output_tokens ?? 0,
@@ -702,8 +765,7 @@ function buildCodexUsageSnapshot(data: CodexSessionData): UsageSnapshot | null {
       continue;
     }
 
-    const isSpark =
-      limitKey.includes("bengalfox") || limitKey.includes("spark");
+    const isSpark = limitKey.includes("bengalfox") || limitKey.includes("spark");
 
     if (isSpark) {
       const spark5Hour = createPercentRemainingDial(
@@ -726,11 +788,7 @@ function buildCodexUsageSnapshot(data: CodexSessionData): UsageSnapshot | null {
       continue;
     }
 
-    const fiveHour = createPercentRemainingDial(
-      "codex-5h",
-      "5 hour usage limit",
-      snapshot.primary,
-    );
+    const fiveHour = createPercentRemainingDial("codex-5h", "5 hour usage limit", snapshot.primary);
     if (fiveHour) {
       dials.set(fiveHour.id, fiveHour);
     }
@@ -789,9 +847,7 @@ function buildCodexUsageSnapshot(data: CodexSessionData): UsageSnapshot | null {
     provider: "codex",
     plan: formatPlanType(data.plan),
     capturedAt: data.capturedAt ?? new Date().toISOString(),
-    dials: order
-      .map((id) => dials.get(id))
-      .filter((dial): dial is UsageDial => dial !== undefined),
+    dials: order.map((id) => dials.get(id)).filter((dial): dial is UsageDial => dial !== undefined),
   };
 }
 
@@ -854,9 +910,7 @@ async function streamCodexSessionData(filePath: string): Promise<CodexSessionDat
 
           for (const snapshot of asRateLimitSnapshots(message?.rate_limits)) {
             const key =
-              snapshot.limit_id ??
-              snapshot.limit_name ??
-              `limit-${data.rateLimits.size + 1}`;
+              snapshot.limit_id ?? snapshot.limit_name ?? `limit-${data.rateLimits.size + 1}`;
             data.rateLimits.set(key, snapshot);
             if (snapshot.credits) {
               data.credits = snapshot.credits;
@@ -962,12 +1016,20 @@ const sessionFileCache = new Map<string, { path: string | null; expiry: number }
 
 /** Find session file with caching to avoid double scans per refresh cycle */
 async function findCodexSessionFileCached(workspacePath: string): Promise<string | null> {
-  const cached = sessionFileCache.get(workspacePath);
+  const cacheKey = await canonicalizeComparablePath(workspacePath);
+  const cached = sessionFileCache.get(cacheKey);
   if (cached && Date.now() < cached.expiry) {
     return cached.path;
   }
   const result = await findCodexSessionFile(workspacePath);
-  sessionFileCache.set(workspacePath, { path: result, expiry: Date.now() + SESSION_FILE_CACHE_TTL_MS });
+  if (result) {
+    sessionFileCache.set(cacheKey, {
+      path: result,
+      expiry: Date.now() + SESSION_FILE_CACHE_TTL_MS,
+    });
+  } else {
+    sessionFileCache.delete(cacheKey);
+  }
   return result;
 }
 
@@ -1044,7 +1106,10 @@ function createCodexAgent(): Agent {
       return "active";
     },
 
-    async getActivityState(session: Session, readyThresholdMs?: number): Promise<ActivityDetection | null> {
+    async getActivityState(
+      session: Session,
+      readyThresholdMs?: number,
+    ): Promise<ActivityDetection | null> {
       const threshold = readyThresholdMs ?? DEFAULT_READY_THRESHOLD_MS;
 
       // Check if process is running first
@@ -1235,6 +1300,7 @@ export function create(): Agent {
 /** @internal Clear the session file cache. Exported for testing only. */
 export function _resetSessionFileCache(): void {
   sessionFileCache.clear();
+  canonicalPathCache.clear();
 }
 
 export { CodexAppServerClient } from "./app-server-client.js";

@@ -4,12 +4,13 @@ import type { Session, RuntimeHandle, AgentLaunchConfig } from "@composio/ao-cor
 // ---------------------------------------------------------------------------
 // Hoisted mocks — available inside vi.mock factories
 // ---------------------------------------------------------------------------
-const { mockExecFileAsync, mockReaddir, mockReadFile, mockStat, mockHomedir } =
+const { mockExecFileAsync, mockReaddir, mockReadFile, mockStat, mockRealpath, mockHomedir } =
   vi.hoisted(() => ({
     mockExecFileAsync: vi.fn(),
     mockReaddir: vi.fn(),
     mockReadFile: vi.fn(),
     mockStat: vi.fn(),
+    mockRealpath: vi.fn(),
     mockHomedir: vi.fn(() => "/mock/home"),
   }));
 
@@ -24,6 +25,7 @@ vi.mock("node:fs/promises", () => ({
   readdir: mockReaddir,
   readFile: mockReadFile,
   stat: mockStat,
+  realpath: mockRealpath,
 }));
 
 vi.mock("node:os", () => ({
@@ -110,6 +112,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetPsCache();
   mockHomedir.mockReturnValue("/mock/home");
+  mockRealpath.mockImplementation(async (path: string) => path);
 });
 
 describe("plugin manifest & exports", () => {
@@ -704,5 +707,34 @@ describe("getUsageSnapshot", () => {
   it("returns null when no rate_limit_event lines exist", async () => {
     mockJsonlFiles('{"type":"assistant","message":{"content":"done"}}');
     expect(await agent.getUsageSnapshot!(makeSession())).toBeNull();
+  });
+
+  it("falls back to the canonical workspace path for worktree sessions", async () => {
+    const jsonl = [
+      '{"type":"user","message":{"content":"hi"}}',
+      '{"timestamp":"2026-03-10T12:00:00.000Z","type":"rate_limit_event","rate_limit_info":{"rateLimitType":"five_hour","utilization":0.25,"resetsAt":"2026-03-10T15:00:00.000Z"}}',
+    ].join("\n");
+
+    mockRealpath.mockImplementation(async (path: string) => {
+      if (path === "/Users/dev/alias/ao-3") {
+        return "/Users/dev/.worktrees/ao/ao-3";
+      }
+      return path;
+    });
+    mockReaddir.mockImplementation(async (path: string) => {
+      if (path === "/mock/home/.claude/projects/-Users-dev--worktrees-ao-ao-3") {
+        return ["session-abc123.jsonl"];
+      }
+      throw new Error("ENOENT");
+    });
+    mockStat.mockResolvedValue({ mtimeMs: 1000, mtime: new Date(1000) });
+    mockReadFile.mockResolvedValue(jsonl);
+
+    const snapshot = await agent.getUsageSnapshot!(
+      makeSession({ workspacePath: "/Users/dev/alias/ao-3" }),
+    );
+
+    expect(snapshot?.provider).toBe("claude-code");
+    expect(snapshot?.dials[0]?.displayValue).toBe("25%");
   });
 });

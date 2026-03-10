@@ -1,14 +1,28 @@
 import { cn } from "@/lib/cn";
-import type { CostEstimate, UsageDial, UsageProvider, UsageSnapshot } from "@/lib/types";
+import type {
+  CostEstimate,
+  DashboardUsageSnapshot,
+  DashboardUsageSource,
+  UsageDial,
+  UsageProvider,
+  UsageSnapshot,
+} from "@/lib/types";
 
 interface UsagePanelsProps {
-  snapshots: UsageSnapshot[];
+  snapshots: DashboardUsageSnapshot[];
   compact?: boolean;
 }
 
 interface SessionUsageCardProps {
   cost: CostEstimate | null;
   snapshot: UsageSnapshot | null;
+}
+
+interface UsageSnapshotLike {
+  provider: UsageProvider;
+  plan?: string | null;
+  capturedAt?: string | null;
+  dials: UsageDial[];
 }
 
 const PROVIDER_META: Record<
@@ -44,6 +58,39 @@ function formatResetTime(resetsAt: string | null | undefined): string | null {
   return `Resets ${formatted.replace(",", "")}`;
 }
 
+function formatRelativeUpdate(capturedAt: string | null | undefined): string | null {
+  if (!capturedAt) return null;
+
+  const timestamp = new Date(capturedAt);
+  if (Number.isNaN(timestamp.getTime())) return null;
+
+  const diffMs = timestamp.getTime() - Date.now();
+  const absSeconds = Math.abs(diffMs) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+  if (absSeconds < 60) {
+    return "Last updated just now";
+  }
+  if (absSeconds < 3600) {
+    return `Last updated ${rtf.format(Math.round(diffMs / 60_000), "minute")}`;
+  }
+  if (absSeconds < 86_400) {
+    return `Last updated ${rtf.format(Math.round(diffMs / 3_600_000), "hour")}`;
+  }
+  return `Last updated ${rtf.format(Math.round(diffMs / 86_400_000), "day")}`;
+}
+
+function getSnapshotStatusLabel(source: DashboardUsageSource): string {
+  switch (source) {
+    case "live":
+      return "Live";
+    case "cached":
+      return "Cached snapshot";
+    case "empty":
+      return "No data yet";
+  }
+}
+
 function progressForDial(dial: UsageDial): number | null {
   if (dial.status === "unavailable") return null;
   if (dial.status === "unlimited") return 100;
@@ -70,10 +117,14 @@ function CircularUsageDial({
   dial,
   accent,
   compact = false,
+  source,
+  capturedAt,
 }: {
   dial: UsageDial;
   accent: string;
   compact?: boolean;
+  source?: DashboardUsageSource;
+  capturedAt?: string | null;
 }) {
   const size = compact ? 104 : 116;
   const strokeWidth = compact ? 8 : 9;
@@ -84,9 +135,20 @@ function CircularUsageDial({
     progress === null ? circumference : circumference - (progress / 100) * circumference;
   const resetLabel = formatResetTime(dial.resetsAt);
   const helperText =
-    dial.status === "unavailable"
-      ? "No live data yet"
-      : resetLabel ?? (dial.kind === "absolute" ? "Live balance" : "Live usage");
+    source === "empty"
+      ? "No data yet"
+      : dial.status === "unavailable"
+        ? source === "cached"
+          ? (formatRelativeUpdate(capturedAt) ?? "Snapshot unavailable")
+          : "Live data unavailable"
+        : (resetLabel ??
+          (source === "cached"
+            ? dial.kind === "absolute"
+              ? "Last known balance"
+              : "Last known usage"
+            : dial.kind === "absolute"
+              ? "Live balance"
+              : "Live usage"));
 
   return (
     <div
@@ -165,11 +227,14 @@ function CircularUsageDial({
 function UsageProviderSection({
   snapshot,
   compact = false,
+  source,
 }: {
-  snapshot: UsageSnapshot;
+  snapshot: UsageSnapshotLike;
   compact?: boolean;
+  source?: DashboardUsageSource;
 }) {
   const meta = PROVIDER_META[snapshot.provider];
+  const updateLabel = source === "cached" ? formatRelativeUpdate(snapshot.capturedAt) : null;
 
   return (
     <section
@@ -180,28 +245,53 @@ function UsageProviderSection({
       }}
     >
       <div className="border-b border-[var(--color-border-subtle)] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ background: meta.accent, boxShadow: `0 0 14px ${meta.glow}` }}
-          />
-          <h3 className="text-[13px] font-semibold text-[var(--color-text-primary)]">
-            {meta.title}
-          </h3>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.11em] text-[var(--color-text-tertiary)]">
-          <span>{meta.heading}</span>
-          {snapshot.plan && (
-            <span className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 normal-case tracking-normal text-[10px]">
-              {snapshot.plan}
-            </span>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: meta.accent, boxShadow: `0 0 14px ${meta.glow}` }}
+              />
+              <h3 className="text-[13px] font-semibold text-[var(--color-text-primary)]">
+                {meta.title}
+              </h3>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.11em] text-[var(--color-text-tertiary)]">
+              <span>{meta.heading}</span>
+              {snapshot.plan && (
+                <span className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 normal-case tracking-normal text-[10px]">
+                  {snapshot.plan}
+                </span>
+              )}
+            </div>
+          </div>
+          {source && (
+            <div className="flex flex-col items-end gap-1 text-right">
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.11em]",
+                  source === "live"
+                    ? "border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]"
+                    : source === "cached"
+                      ? "border-[rgba(255,184,108,0.35)] text-[rgb(255,200,132)]"
+                      : "border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]",
+                )}
+              >
+                {getSnapshotStatusLabel(source)}
+              </span>
+              {updateLabel && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">{updateLabel}</span>
+              )}
+            </div>
           )}
         </div>
       </div>
       <div
         className={cn(
           "grid gap-3 p-4",
-          compact ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3",
+          compact
+            ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
+            : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3",
         )}
       >
         {snapshot.dials.map((dial) => (
@@ -210,6 +300,8 @@ function UsageProviderSection({
             dial={dial}
             accent={meta.accent}
             compact={compact}
+            source={source}
+            capturedAt={snapshot.capturedAt}
           />
         ))}
       </div>
@@ -217,21 +309,16 @@ function UsageProviderSection({
   );
 }
 
-function UsageMetric({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent: string;
-}) {
+function UsageMetric({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
     <div className="rounded-[12px] border border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.03)] px-3 py-3">
       <div className="text-[10px] uppercase tracking-[0.11em] text-[var(--color-text-tertiary)]">
         {label}
       </div>
-      <div className="mt-1 font-[var(--font-mono)] text-[18px] font-semibold tabular-nums" style={{ color: accent }}>
+      <div
+        className="mt-1 font-[var(--font-mono)] text-[18px] font-semibold tabular-nums"
+        style={{ color: accent }}
+      >
         {value}
       </div>
     </div>
@@ -255,6 +342,7 @@ export function UsagePanels({ snapshots, compact = false }: UsagePanelsProps) {
           key={snapshot.provider}
           snapshot={snapshot}
           compact={compact}
+          source={snapshot.source}
         />
       ))}
     </div>

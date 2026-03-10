@@ -17,7 +17,7 @@ import {
   type WorkspaceHooksConfig,
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat, open, writeFile, mkdir, chmod } from "node:fs/promises";
+import { readdir, readFile, stat, open, writeFile, mkdir, chmod, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -25,10 +25,17 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-function normalizePermissionMode(mode: string | undefined): "permissionless" | "default" | "auto-edit" | "suggest" | undefined {
+function normalizePermissionMode(
+  mode: string | undefined,
+): "permissionless" | "default" | "auto-edit" | "suggest" | undefined {
   if (!mode) return undefined;
   if (mode === "skip") return "permissionless";
-  if (mode === "permissionless" || mode === "default" || mode === "auto-edit" || mode === "suggest") {
+  if (
+    mode === "permissionless" ||
+    mode === "default" ||
+    mode === "auto-edit" ||
+    mode === "suggest"
+  ) {
     return mode;
   }
   return undefined;
@@ -213,6 +220,56 @@ export function toClaudeProjectPath(workspacePath: string): string {
   return normalized.replace(/:/g, "").replace(/[/.]/g, "-");
 }
 
+function normalizeComparablePath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  if (normalized === "/") {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/, "");
+}
+
+async function getClaudeProjectDirCandidates(workspacePath: string): Promise<string[]> {
+  const candidates = new Set<string>();
+  const normalizedWorkspacePath = normalizeComparablePath(workspacePath);
+  candidates.add(
+    join(homedir(), ".claude", "projects", toClaudeProjectPath(normalizedWorkspacePath)),
+  );
+
+  try {
+    const canonicalWorkspacePath = normalizeComparablePath(await realpath(workspacePath));
+    candidates.add(
+      join(homedir(), ".claude", "projects", toClaudeProjectPath(canonicalWorkspacePath)),
+    );
+  } catch {
+    // Fall back to the provided workspace path when it can't be resolved.
+  }
+
+  return Array.from(candidates);
+}
+
+async function findLatestSessionFileForWorkspace(workspacePath: string): Promise<string | null> {
+  const projectDirs = await getClaudeProjectDirCandidates(workspacePath);
+  let latestFile: { path: string; mtime: number } | null = null;
+
+  for (const projectDir of projectDirs) {
+    const sessionFile = await findLatestSessionFile(projectDir);
+    if (!sessionFile) {
+      continue;
+    }
+
+    try {
+      const fileStat = await stat(sessionFile);
+      if (!latestFile || fileStat.mtimeMs > latestFile.mtime) {
+        latestFile = { path: sessionFile, mtime: fileStat.mtimeMs };
+      }
+    } catch {
+      // Ignore files that disappear between directory scan and stat.
+    }
+  }
+
+  return latestFile?.path ?? null;
+}
+
 /** Find the most recently modified .jsonl session file in a directory */
 async function findLatestSessionFile(projectDir: string): Promise<string | null> {
   let entries: string[];
@@ -313,8 +370,7 @@ async function parseJsonlFileTail(filePath: string, maxBytes = 131_072): Promise
   // Skip potentially truncated first line only when we started mid-file.
   // If offset === 0 we read from the start so the first line is complete.
   const firstNewline = content.indexOf("\n");
-  const safeContent =
-    offset > 0 && firstNewline >= 0 ? content.slice(firstNewline + 1) : content;
+  const safeContent = offset > 0 && firstNewline >= 0 ? content.slice(firstNewline + 1) : content;
   const lines: JsonlLine[] = [];
   for (const line of safeContent.split("\n")) {
     const trimmed = line.trim();
@@ -332,9 +388,7 @@ async function parseJsonlFileTail(filePath: string, maxBytes = 131_072): Promise
 }
 
 /** Extract auto-generated summary from JSONL (last "summary" type entry) */
-function extractSummary(
-  lines: JsonlLine[],
-): { summary: string; isFallback: boolean } | null {
+function extractSummary(lines: JsonlLine[]): { summary: string; isFallback: boolean } | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (line?.type === "summary" && line.summary) {
@@ -471,18 +525,10 @@ function extractUsageSnapshot(lines: JsonlLine[]): UsageSnapshot | null {
 
   const dials = [
     currentSessionInfo
-      ? createClaudeUsageDial(
-          "claude-current-session",
-          "Current session usage",
-          currentSessionInfo,
-        )
+      ? createClaudeUsageDial("claude-current-session", "Current session usage", currentSessionInfo)
       : null,
     weeklyInfo
-      ? createClaudeUsageDial(
-          "claude-weekly-all-models",
-          "Weekly limits - All models",
-          weeklyInfo,
-        )
+      ? createClaudeUsageDial("claude-weekly-all-models", "Weekly limits - All models", weeklyInfo)
       : null,
   ].filter((dial): dial is UsageDial => dial !== null);
 
@@ -825,10 +871,7 @@ function createClaudeCodeAgent(): Agent {
         return null;
       }
 
-      const projectPath = toClaudeProjectPath(session.workspacePath);
-      const projectDir = join(homedir(), ".claude", "projects", projectPath);
-
-      const sessionFile = await findLatestSessionFile(projectDir);
+      const sessionFile = await findLatestSessionFileForWorkspace(session.workspacePath);
       if (!sessionFile) {
         // No session file found — cannot determine activity
         return null;
@@ -869,12 +912,8 @@ function createClaudeCodeAgent(): Agent {
     async getSessionInfo(session: Session): Promise<AgentSessionInfo | null> {
       if (!session.workspacePath) return null;
 
-      // Build the Claude project directory path
-      const projectPath = toClaudeProjectPath(session.workspacePath);
-      const projectDir = join(homedir(), ".claude", "projects", projectPath);
-
       // Find the latest session JSONL file
-      const sessionFile = await findLatestSessionFile(projectDir);
+      const sessionFile = await findLatestSessionFileForWorkspace(session.workspacePath);
       if (!sessionFile) return null;
 
       // Parse only the tail — summaries are always near the end, files can be 100MB+
@@ -896,10 +935,7 @@ function createClaudeCodeAgent(): Agent {
     async getUsageSnapshot(session: Session): Promise<UsageSnapshot | null> {
       if (!session.workspacePath) return null;
 
-      const projectPath = toClaudeProjectPath(session.workspacePath);
-      const projectDir = join(homedir(), ".claude", "projects", projectPath);
-
-      const sessionFile = await findLatestSessionFile(projectDir);
+      const sessionFile = await findLatestSessionFileForWorkspace(session.workspacePath);
       if (!sessionFile) return null;
 
       const lines = await parseJsonlFileTail(sessionFile);
@@ -911,12 +947,8 @@ function createClaudeCodeAgent(): Agent {
     async getRestoreCommand(session: Session, project: ProjectConfig): Promise<string | null> {
       if (!session.workspacePath) return null;
 
-      // Find Claude's project directory for this workspace
-      const projectPath = toClaudeProjectPath(session.workspacePath);
-      const projectDir = join(homedir(), ".claude", "projects", projectPath);
-
       // Find the latest session JSONL file
-      const sessionFile = await findLatestSessionFile(projectDir);
+      const sessionFile = await findLatestSessionFileForWorkspace(session.workspacePath);
       if (!sessionFile) return null;
 
       // Extract session UUID from filename (e.g. "abc123-def456.jsonl" → "abc123-def456")

@@ -35,6 +35,7 @@ import {
   type ActivityState,
   type ReviewDecision,
   type CostEstimate,
+  type UsageDial,
   type UsageProvider,
   type UsageSnapshot,
 } from "@composio/ao-core/types";
@@ -136,7 +137,17 @@ export interface DashboardStats {
 
 export interface DashboardUsageResponse {
   updatedAt: string;
-  snapshots: UsageSnapshot[];
+  snapshots: DashboardUsageSnapshot[];
+}
+
+export type DashboardUsageSource = "live" | "cached" | "empty";
+
+export interface DashboardUsageSnapshot {
+  provider: UsageProvider;
+  plan?: string | null;
+  capturedAt: string | null;
+  dials: UsageDial[];
+  source: DashboardUsageSource;
 }
 
 export interface SessionUsageResponse {
@@ -236,10 +247,7 @@ export function getAttentionLevel(session: DashboardSession): AttentionLevel {
     return "respond";
   }
   // Exited agent with non-terminal status = crashed, needs human attention
-  if (
-    session.activity === ACTIVITY_STATE.EXITED &&
-    session.status !== SESSION_STATUS.WAITING_CI
-  ) {
+  if (session.activity === ACTIVITY_STATE.EXITED && session.status !== SESSION_STATUS.WAITING_CI) {
     return "respond";
   }
 
