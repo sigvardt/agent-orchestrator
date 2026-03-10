@@ -11,6 +11,7 @@ import { registerDashboard } from "./commands/dashboard.js";
 import { registerOpen } from "./commands/open.js";
 import { registerStart, registerStop } from "./commands/start.js";
 import { registerLifecycleWorker } from "./commands/lifecycle-worker.js";
+import { registerServices } from "./commands/services.js";
 
 const program = new Command();
 
@@ -29,6 +30,7 @@ registerSession(program);
 registerSend(program);
 registerReviewCheck(program);
 registerDashboard(program);
+registerServices(program);
 registerOpen(program);
 registerLifecycleWorker(program);
 

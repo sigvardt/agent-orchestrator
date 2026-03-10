@@ -55,6 +55,7 @@ ao start https://github.com/your-org/your-repo
 ```
 
 Auto-detects language, package manager, SCM platform, and default branch. Generates `agent-orchestrator.yaml` and starts the dashboard + orchestrator.
+On supported hosts, `ao start` also brings up the supervised dashboard services automatically. Use `ao services status --strict` to confirm dashboard and websocket readiness.
 
 **Option B — From an existing local repo:**
 
@@ -70,6 +71,13 @@ ao spawn my-project 123    # GitHub issue, Linear ticket, or ad-hoc
 ```
 
 Dashboard opens at `http://localhost:3000`. Run `ao status` for the CLI view.
+
+For resilient dashboard + terminal websocket uptime (including XDA terminal connectivity), install supervised services:
+
+```bash
+ao services install
+ao services status
+```
 
 ## How It Works
 
@@ -150,7 +158,26 @@ ao send <session> "Fix the tests"      # Send instructions
 ao session ls                          # List sessions
 ao session kill <session>              # Kill a session
 ao session restore <session>           # Revive a crashed agent
-ao dashboard                           # Open web dashboard
+ao dashboard                           # Open web dashboard (dev mode)
+ao services install|start|stop|status  # Supervised dashboard/ws runtime
+```
+
+## Supervised Runtime (Recommended)
+
+`ao services` runs and monitors all three runtime endpoints:
+
+- dashboard web server (`3000`)
+- terminal websocket server (`14800`)
+- direct terminal websocket server (`14801`, used for XDA-capable terminal mode)
+
+Use this for normal operation instead of ad-hoc `pnpm dev` shell processes:
+
+```bash
+# One-time setup (installs systemd user services on Linux, fallback supervisor elsewhere)
+ao services install
+
+# Check readiness for dashboard + XDA websocket backends
+ao services status --strict
 ```
 
 ## Why Agent Orchestrator?
@@ -173,7 +200,7 @@ Running one AI agent in a terminal is easy. Running 30 across different issues, 
 ```bash
 pnpm install && pnpm build    # Install and build all packages
 pnpm test                      # Run tests (3,288 test cases)
-pnpm dev                       # Start web dashboard dev server
+pnpm dev                       # Start the foreground dev dashboard stack
 ```
 
 See [CLAUDE.md](CLAUDE.md) for code conventions and architecture details.

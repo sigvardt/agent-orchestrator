@@ -24,6 +24,8 @@ const {
   mockSpawn,
   mockEnsureLifecycleWorker,
   mockStopLifecycleWorker,
+  mockStartManagedServices,
+  mockStopManagedServices,
 } = vi.hoisted(() => ({
   mockExec: vi.fn(),
   mockExecSilent: vi.fn(),
@@ -42,6 +44,8 @@ const {
   mockSpawn: vi.fn(),
   mockEnsureLifecycleWorker: vi.fn(),
   mockStopLifecycleWorker: vi.fn(),
+  mockStartManagedServices: vi.fn(),
+  mockStopManagedServices: vi.fn(),
 }));
 
 vi.mock("../../src/lib/shell.js", () => ({
@@ -109,6 +113,11 @@ vi.mock("../../src/lib/dashboard-rebuild.js", () => ({
   waitForPortFree: vi.fn(),
 }));
 
+vi.mock("../../src/lib/services.js", () => ({
+  startManagedServices: (...args: unknown[]) => mockStartManagedServices(...args),
+  stopManagedServices: (...args: unknown[]) => mockStopManagedServices(...args),
+}));
+
 vi.mock("../../src/lib/preflight.js", () => ({
   preflight: {
     checkPort: vi.fn(),
@@ -174,6 +183,41 @@ beforeEach(() => {
   });
   mockStopLifecycleWorker.mockReset();
   mockStopLifecycleWorker.mockResolvedValue(true);
+  mockStartManagedServices.mockReset();
+  mockStartManagedServices.mockResolvedValue({
+    manager: "systemd",
+    started: true,
+    ready: true,
+    status: {
+      manager: "systemd",
+      managerRunning: true,
+      managerDetail: "mock",
+      processStates: {
+        dashboard: "active",
+        "terminal-ws": "active",
+        "direct-terminal-ws": "active",
+      },
+      services: [],
+      allReady: true,
+    },
+  });
+  mockStopManagedServices.mockReset();
+  mockStopManagedServices.mockResolvedValue({
+    manager: "systemd",
+    stopped: true,
+    status: {
+      manager: "systemd",
+      managerRunning: false,
+      managerDetail: "mock",
+      processStates: {
+        dashboard: "inactive",
+        "terminal-ws": "inactive",
+        "direct-terminal-ws": "inactive",
+      },
+      services: [],
+      allReady: false,
+    },
+  });
   mockSpawn.mockClear();
 });
 
@@ -701,16 +745,15 @@ describe("start command — orchestrator session strategy display", () => {
 // ---------------------------------------------------------------------------
 
 describe("stop command", () => {
-  it("stops orchestrator session and dashboard", async () => {
+  it("stops orchestrator session without tearing down shared dashboard services", async () => {
     mockConfigRef.current = makeConfig({ "my-app": makeProject() });
     mockSessionManager.get.mockResolvedValue({ id: "app-orchestrator", status: "running" });
     mockSessionManager.kill.mockResolvedValue(undefined);
-    mockExec.mockResolvedValue({ stdout: "12345", stderr: "" });
 
     await program.parseAsync(["node", "test", "stop"]);
 
     expect(mockSessionManager.kill).toHaveBeenCalledWith("app-orchestrator", {
-      purgeOpenCode: false,
+      purgeOpenCode: true,
     });
     expect(mockStopLifecycleWorker).toHaveBeenCalledWith(
       expect.objectContaining({ configPath: expect.any(String) }),
@@ -723,10 +766,21 @@ describe("stop command", () => {
     expect(output).toContain("Orchestrator stopped");
   });
 
+  it("keeps mapped OpenCode session when stopping with --keep-session", async () => {
+    mockConfigRef.current = makeConfig({ "my-app": makeProject() });
+    mockSessionManager.get.mockResolvedValue({ id: "app-orchestrator", status: "running" });
+    mockSessionManager.kill.mockResolvedValue(undefined);
+
+    await program.parseAsync(["node", "test", "stop", "--keep-session"]);
+
+    expect(mockSessionManager.kill).toHaveBeenCalledWith("app-orchestrator", {
+      purgeOpenCode: false,
+    });
+  });
+
   it("handles missing orchestrator session gracefully", async () => {
     mockConfigRef.current = makeConfig({ "my-app": makeProject() });
     mockSessionManager.get.mockResolvedValue(null);
-    mockExec.mockRejectedValue(new Error("no process"));
 
     await program.parseAsync(["node", "test", "stop"]);
 
