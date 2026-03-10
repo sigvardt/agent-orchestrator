@@ -95,6 +95,23 @@ const ProjectProgressChecksSchema = z.object({
   signals: ProgressCheckSignalsSchema.partial().optional(),
 });
 
+const VerificationPostPushSchema = z.object({
+  command: z.string().min(1),
+  timeout: z.number().positive().optional(),
+  failAction: z.enum(["block-merge", "warn", "notify"]).optional(),
+  artifacts: z.array(z.string()).optional(),
+});
+
+const VerificationEvidenceSchema = z.object({
+  required: z.boolean().optional(),
+  patterns: z.array(z.string()).optional(),
+});
+
+const VerificationConfigSchema = z.object({
+  postPush: VerificationPostPushSchema.optional(),
+  evidence: VerificationEvidenceSchema.optional(),
+});
+
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
   repo: z.string(),
@@ -111,6 +128,7 @@ const ProjectConfigSchema = z.object({
   scm: SCMConfigSchema.optional(),
   symlinks: z.array(z.string()).optional(),
   postCreate: z.array(z.string()).optional(),
+  verification: VerificationConfigSchema.optional(),
   agentConfig: AgentSpecificConfigSchema.default({}),
   reactions: z.record(ReactionConfigSchema.partial()).optional(),
   agentRules: z.string().optional(),

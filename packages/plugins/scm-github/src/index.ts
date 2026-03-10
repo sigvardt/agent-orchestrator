@@ -389,6 +389,10 @@ function createGitHubSCM(): SCM {
       await gh(["pr", "close", String(pr.number), "--repo", repoFlag(pr)]);
     },
 
+    async commentPR(pr: PRInfo, body: string): Promise<void> {
+      await gh(["pr", "comment", String(pr.number), "--repo", repoFlag(pr), "--body", body]);
+    },
+
     async getCIChecks(pr: PRInfo): Promise<CICheck[]> {
       try {
         const raw = await gh([

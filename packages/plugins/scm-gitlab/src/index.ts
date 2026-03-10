@@ -253,6 +253,13 @@ function createGitLabSCM(config?: Record<string, unknown>): SCM {
       await glab(["mr", "close", String(pr.number), "--repo", repoFlag(pr)], resolveHostname(pr));
     },
 
+    async commentPR(pr: PRInfo, body: string): Promise<void> {
+      await glab(
+        ["mr", "note", String(pr.number), "--repo", repoFlag(pr), "--message", body],
+        resolveHostname(pr),
+      );
+    },
+
     async getCIChecks(pr: PRInfo): Promise<CICheck[]> {
       try {
         const apiBase = mrApiPath(pr);

@@ -6,6 +6,7 @@ import {
   sessionToDashboard,
   resolveProject,
   enrichSessionPR,
+  applySessionVerificationGate,
   enrichSessionsMetadata,
   computeStats,
 } from "@/lib/serialize";
@@ -47,10 +48,11 @@ export default async function Home() {
     // Skip enrichment for terminal sessions (merged, closed, done, terminated)
     const terminalStatuses = new Set(["merged", "killed", "cleanup", "done", "terminated"]);
     const enrichPromises = coreSessions.map((core, i) => {
-      if (!core.pr) return Promise.resolve();
+      const pr = core.pr;
+      if (!pr) return Promise.resolve();
 
       // Check cache first (before terminal status check)
-      const cacheKey = prCacheKey(core.pr.owner, core.pr.repo, core.pr.number);
+      const cacheKey = prCacheKey(pr.owner, pr.repo, pr.number);
       const cached = prCache.get(cacheKey);
 
       // Apply cached data if available (for both terminal and non-terminal sessions)
@@ -77,6 +79,9 @@ export default async function Home() {
           sessions[i].pr.unresolvedComments = cached.unresolvedComments;
         }
 
+        const project = resolveProject(core, config.projects);
+        const gatePromise = applySessionVerificationGate(core, sessions[i], project);
+
         // Skip enrichment if cache is fresh AND (terminal OR merged/closed)
         // This allows terminal sessions to be enriched once when cache is missing/expired
         if (
@@ -84,14 +89,17 @@ export default async function Home() {
           cached.state === "merged" ||
           cached.state === "closed"
         ) {
-          return Promise.resolve();
+          return gatePromise;
         }
       }
 
       const project = resolveProject(core, config.projects);
       const scm = getSCM(registry, project);
       if (!scm) return Promise.resolve();
-      return enrichSessionPR(sessions[i], scm, core.pr);
+      return (async () => {
+        await enrichSessionPR(sessions[i], scm, pr);
+        await applySessionVerificationGate(core, sessions[i], project);
+      })();
     });
     // Cap enrichment at 4s — if GitHub is slow/rate-limited, serve stale data fast
     const enrichTimeout = new Promise<void>((resolve) => setTimeout(resolve, 4_000));

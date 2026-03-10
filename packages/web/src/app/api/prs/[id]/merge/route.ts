@@ -1,4 +1,8 @@
-import { resolveMergeMethod } from "@composio/ao-core";
+import {
+  applyVerificationToMergeability,
+  evaluatePostPushVerification,
+  resolveMergeMethod,
+} from "@composio/ao-core";
 import { type NextRequest, NextResponse } from "next/server";
 import { getServices, getSCM } from "@/lib/services";
 
@@ -20,6 +24,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     }
 
     const project = config.projects[session.projectId];
+    if (!project) {
+      return NextResponse.json({ error: `Unknown project ${session.projectId}` }, { status: 500 });
+    }
     const scm = getSCM(registry, project);
     if (!scm) {
       return NextResponse.json(
@@ -34,7 +41,10 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: `PR is ${state}, not open` }, { status: 409 });
     }
 
-    const mergeability = await scm.getMergeability(session.pr);
+    const mergeability = applyVerificationToMergeability(
+      await scm.getMergeability(session.pr),
+      await evaluatePostPushVerification(session, project),
+    );
     if (!mergeability.mergeable) {
       return NextResponse.json(
         { error: "PR is not mergeable", blockers: mergeability.blockers },

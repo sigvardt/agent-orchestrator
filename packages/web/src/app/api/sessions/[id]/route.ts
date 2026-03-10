@@ -4,6 +4,7 @@ import {
   sessionToDashboard,
   resolveProject,
   enrichSessionPR,
+  applySessionVerificationGate,
   enrichSessionsMetadata,
 } from "@/lib/serialize";
 
@@ -32,6 +33,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           // Nothing cached yet — block once to populate, then future calls use cache
           await enrichSessionPR(dashboardSession, scm, coreSession.pr);
         }
+        await applySessionVerificationGate(coreSession, dashboardSession, project);
       }
     }
 

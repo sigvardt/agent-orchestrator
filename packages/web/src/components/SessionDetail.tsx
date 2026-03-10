@@ -7,6 +7,7 @@ import {
   type DashboardPR,
   type SessionUsageResponse,
   isPRMergeReady,
+  isVerificationBlocker,
 } from "@/lib/types";
 import { CI_STATUS } from "@composio/ao-core/types";
 import { cn } from "@/lib/cn";
@@ -718,6 +719,14 @@ function IssuesList({ pr }: { pr: DashboardPR }) {
 
   if (pr.state !== "merged" && !pr.mergeability.noConflicts) {
     issues.push({ icon: "✗", color: "var(--color-status-error)", text: "Merge conflicts" });
+  }
+
+  for (const blocker of pr.mergeability.blockers.filter((item) => isVerificationBlocker(item))) {
+    issues.push({
+      icon: "●",
+      color: "var(--color-status-attention)",
+      text: blocker.replace(/^Post-push verification:\s*/u, ""),
+    });
   }
 
   if (!pr.mergeability.mergeable && issues.length === 0) {

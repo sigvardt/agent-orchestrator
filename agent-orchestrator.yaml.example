@@ -54,6 +54,21 @@ projects:
     # postCreate:
     #   - "pnpm install"
 
+    # Optional post-push verification for live/system checks
+    # verification:
+    #   postPush:
+    #     command: "npm run verify:live"
+    #     timeout: 120
+    #     failAction: block-merge   # block-merge | warn | notify
+    #     artifacts:
+    #       - reports/verify-*.json
+    #       - screenshots/verify-*.png
+    #   evidence:
+    #     required: true
+    #     patterns:
+    #       - docs/.verify-evidence-*
+    #       - reports/verify-*
+
     # Agent-specific config
     # agentConfig:
     #   permissions: permissionless    # modes: permissionless | default | auto-edit | suggest

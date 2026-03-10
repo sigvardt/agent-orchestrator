@@ -43,6 +43,8 @@ import {
 // Re-export for use in client components
 export { TERMINAL_STATUSES, TERMINAL_ACTIVITIES, NON_RESTORABLE_STATUSES };
 
+const VERIFICATION_BLOCKER_PREFIX = "Post-push verification:";
+
 /**
  * Attention zone priority level, ordered by human action urgency:
  *
@@ -188,6 +190,11 @@ export function isPRRateLimited(pr: DashboardPR): boolean {
   return pr.mergeability.blockers.includes("API rate limited or unavailable");
 }
 
+/** Returns true when a merge blocker came from post-push verification. */
+export function isVerificationBlocker(blocker: string): boolean {
+  return blocker.startsWith(VERIFICATION_BLOCKER_PREFIX);
+}
+
 /**
  * Returns true when a PR is open and all merge criteria are met.
  * Does NOT return true for merged or closed PRs — those are already done.
@@ -224,7 +231,9 @@ export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   // ── Merge: PR is ready — one click to clear ───────────────────────
   // Check this early: if the PR is mergeable, that's the most valuable
   // action for the human regardless of agent activity.
-  if (session.status === "mergeable" || session.status === "approved") {
+  const hasVerificationBlocker =
+    session.pr?.mergeability.blockers.some((blocker) => isVerificationBlocker(blocker)) ?? false;
+  if (!hasVerificationBlocker && (session.status === "mergeable" || session.status === "approved")) {
     return "merge";
   }
   if (session.pr?.mergeability.mergeable) {

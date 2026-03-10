@@ -231,6 +231,20 @@ describe("scm-github plugin", () => {
     });
   });
 
+  describe("commentPR", () => {
+    it("posts a PR comment", async () => {
+      ghMock.mockResolvedValueOnce({ stdout: "" });
+
+      await scm.commentPR?.(pr, "Verification failed");
+
+      expect(ghMock).toHaveBeenCalledWith(
+        "gh",
+        ["pr", "comment", "42", "--repo", "acme/repo", "--body", "Verification failed"],
+        expect.any(Object),
+      );
+    });
+  });
+
   // ---- checkoutPR --------------------------------------------------------
 
   describe("checkoutPR", () => {

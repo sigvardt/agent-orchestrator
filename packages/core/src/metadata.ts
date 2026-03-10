@@ -116,6 +116,23 @@ export function readMetadata(dataDir: string, sessionId: SessionId): SessionMeta
     restoredAt: raw["restoredAt"],
     waitingCiSince: raw["waitingCiSince"],
     waitingCiTimedOutAt: raw["waitingCiTimedOutAt"],
+    verificationHead: raw["verificationHead"],
+    verificationSignature: raw["verificationSignature"],
+    verificationStatus:
+      raw["verificationStatus"] === "passed" || raw["verificationStatus"] === "failed"
+        ? raw["verificationStatus"]
+        : undefined,
+    verificationCheckedAt: raw["verificationCheckedAt"],
+    verificationFailAction:
+      raw["verificationFailAction"] === "block-merge" ||
+      raw["verificationFailAction"] === "warn" ||
+      raw["verificationFailAction"] === "notify"
+        ? raw["verificationFailAction"]
+        : undefined,
+    verificationBlockers: raw["verificationBlockers"],
+    verificationArtifacts: raw["verificationArtifacts"],
+    verificationEvidence: raw["verificationEvidence"],
+    verificationExitCode: raw["verificationExitCode"],
     role: raw["role"],
     dashboardPort: raw["dashboardPort"] ? Number(raw["dashboardPort"]) : undefined,
     terminalWsPort: raw["terminalWsPort"] ? Number(raw["terminalWsPort"]) : undefined,
@@ -168,6 +185,22 @@ export function writeMetadata(
   if (metadata.waitingCiSince) data["waitingCiSince"] = metadata.waitingCiSince;
   if (metadata.waitingCiTimedOutAt)
     data["waitingCiTimedOutAt"] = metadata.waitingCiTimedOutAt;
+  if (metadata.verificationHead) data["verificationHead"] = metadata.verificationHead;
+  if (metadata.verificationSignature)
+    data["verificationSignature"] = metadata.verificationSignature;
+  if (metadata.verificationStatus) data["verificationStatus"] = metadata.verificationStatus;
+  if (metadata.verificationCheckedAt)
+    data["verificationCheckedAt"] = metadata.verificationCheckedAt;
+  if (metadata.verificationFailAction)
+    data["verificationFailAction"] = metadata.verificationFailAction;
+  if (metadata.verificationBlockers)
+    data["verificationBlockers"] = metadata.verificationBlockers;
+  if (metadata.verificationArtifacts)
+    data["verificationArtifacts"] = metadata.verificationArtifacts;
+  if (metadata.verificationEvidence)
+    data["verificationEvidence"] = metadata.verificationEvidence;
+  if (metadata.verificationExitCode)
+    data["verificationExitCode"] = metadata.verificationExitCode;
   if (metadata.role) data["role"] = metadata.role;
   if (metadata.dashboardPort !== undefined) data["dashboardPort"] = String(metadata.dashboardPort);
   if (metadata.terminalWsPort !== undefined)

@@ -142,6 +142,10 @@ export function isPRRateLimited(pr: DashboardPR): boolean {
   return pr.mergeability.blockers.includes("API rate limited or unavailable");
 }
 
+function isVerificationBlocker(blocker: string): boolean {
+  return blocker.startsWith("Post-push verification:");
+}
+
 /** Determines which attention zone a session belongs to */
 export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   // Done: terminal states
@@ -162,7 +166,9 @@ export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   }
 
   // Merge: PR is ready
-  if (session.status === "mergeable" || session.status === "approved") {
+  const hasVerificationBlocker =
+    session.pr?.mergeability.blockers.some((blocker) => isVerificationBlocker(blocker)) ?? false;
+  if (!hasVerificationBlocker && (session.status === "mergeable" || session.status === "approved")) {
     return "merge";
   }
   if (session.pr?.mergeability.mergeable) {

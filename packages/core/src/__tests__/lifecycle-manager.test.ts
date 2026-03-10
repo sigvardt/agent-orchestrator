@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { createLifecycleManager } from "../lifecycle-manager.js";
@@ -81,6 +81,25 @@ function getLifecycleLogs(): Array<Record<string, unknown>> {
 
 function runGit(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+function writeRepoFile(repoPath: string, relativePath: string, content: string): void {
+  mkdirSync(dirname(join(repoPath, relativePath)), { recursive: true });
+  writeFileSync(join(repoPath, relativePath), content);
+}
+
+function createCommittedRepo(repoPath: string, files: Record<string, string> = {}): string {
+  mkdirSync(repoPath, { recursive: true });
+  runGit(repoPath, "init", "-b", "main");
+  runGit(repoPath, "config", "user.email", "ao@example.com");
+  runGit(repoPath, "config", "user.name", "AO Test");
+  writeRepoFile(repoPath, "README.md", "# test\n");
+  for (const [relativePath, content] of Object.entries(files)) {
+    writeRepoFile(repoPath, relativePath, content);
+  }
+  runGit(repoPath, "add", ".");
+  runGit(repoPath, "commit", "-m", "init");
+  return repoPath;
 }
 
 function computeEventIdempotencyKey(
@@ -1703,6 +1722,153 @@ describe("check (single session)", () => {
     await lm.check("app-1");
 
     expect(lm.getStates().get("app-1")).toBe("mergeable");
+  });
+
+  it("blocks mergeable status when post-push verification fails with block-merge", async () => {
+    const repoPath = createCommittedRepo(join(tmpDir, "verification-block-merge"));
+    config.projects["my-app"]!.verification = {
+      postPush: {
+        command: "exit 1",
+        failAction: "block-merge",
+      },
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("approved"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn().mockResolvedValue({
+        mergeable: true,
+        ciPassing: true,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      }),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        return null;
+      }),
+    };
+
+    const pr = makePR();
+    const session = makeSession({
+      status: "approved",
+      pr,
+      workspacePath: repoPath,
+      branch: pr.branch,
+    });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: repoPath,
+      branch: pr.branch,
+      status: "approved",
+      project: "my-app",
+      pr: pr.url,
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    const metadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(lm.getStates().get("app-1")).toBe("approved");
+    expect(metadata?.["verificationStatus"]).toBe("failed");
+    expect(metadata?.["verificationFailAction"]).toBe("block-merge");
+    expect(metadata?.["verificationBlockers"]).toContain("Verification command exited with code 1");
+  });
+
+  it("comments on the PR when post-push verification fails with warn", async () => {
+    const repoPath = createCommittedRepo(join(tmpDir, "verification-warn"));
+    config.projects["my-app"]!.verification = {
+      postPush: {
+        command: "exit 1",
+        failAction: "warn",
+      },
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      commentPR: vi.fn().mockResolvedValue(undefined),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("approved"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn().mockResolvedValue({
+        mergeable: true,
+        ciPassing: true,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      }),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        return null;
+      }),
+    };
+
+    const pr = makePR();
+    const session = makeSession({
+      status: "approved",
+      pr,
+      workspacePath: repoPath,
+      branch: pr.branch,
+    });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: repoPath,
+      branch: pr.branch,
+      status: "approved",
+      project: "my-app",
+      pr: pr.url,
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("mergeable");
+    expect(mockSCM.commentPR).toHaveBeenCalledTimes(1);
+    expect(mockSCM.commentPR).toHaveBeenCalledWith(
+      pr,
+      expect.stringContaining("Post-push verification failed."),
+    );
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["verificationStatus"]).toBe("failed");
   });
 
   it("throws for nonexistent session", async () => {

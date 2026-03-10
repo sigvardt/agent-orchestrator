@@ -33,6 +33,20 @@ describe("getAttentionLevel", () => {
       const session = makeSession({ status: "pr_open", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("merge");
     });
+
+    it("does not return merge when approved is blocked by post-push verification", () => {
+      const pr = makePR({
+        mergeability: {
+          mergeable: false,
+          ciPassing: true,
+          approved: true,
+          noConflicts: true,
+          blockers: ["Post-push verification: Verification command exited with code 1"],
+        },
+      });
+      const session = makeSession({ status: "approved", activity: "idle", pr });
+      expect(getAttentionLevel(session)).not.toBe("merge");
+    });
   });
 
   // ── RESPOND (red zone — agent needs human input) ───────────────────
