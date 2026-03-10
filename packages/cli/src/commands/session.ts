@@ -130,22 +130,23 @@ export function registerSession(program: Command): void {
     .command("kill")
     .description("Kill a session and remove its worktree")
     .argument("<session>", "Session name to kill")
+    .option("--keep-session", "Keep mapped OpenCode session after kill")
     .option("--purge-session", "Delete mapped OpenCode session during kill")
-    .action(async (sessionName: string, opts: { purgeSession?: boolean }) => {
-      const config = loadConfig();
-      const sm = await getSessionManager(config);
+    .action(
+      async (sessionName: string, opts: { keepSession?: boolean; purgeSession?: boolean }) => {
+        const config = loadConfig();
+        const sm = await getSessionManager(config);
 
-      try {
-        await sm.kill(sessionName, {
-          purgeOpenCode: opts.purgeSession === true,
-          onStep: logKillStep,
-        });
-        console.log(chalk.green(`\nSession ${sessionName} killed.`));
-      } catch (err) {
-        console.error(chalk.red(`Failed to kill session ${sessionName}: ${err}`));
-        process.exit(1);
-      }
-    });
+        try {
+          const purgeOpenCode = opts.purgeSession === true ? true : opts.keepSession !== true;
+          await sm.kill(sessionName, { purgeOpenCode, onStep: logKillStep });
+          console.log(chalk.green(`\nSession ${sessionName} killed.`));
+        } catch (err) {
+          console.error(chalk.red(`Failed to kill session ${sessionName}: ${err}`));
+          process.exit(1);
+        }
+      },
+    );
 
   session
     .command("cleanup")
@@ -215,12 +216,11 @@ export function registerSession(program: Command): void {
     .argument("<pr>", "Pull request number or URL")
     .argument("[session]", "Session name (defaults to AO_SESSION_NAME/AO_SESSION)")
     .option("--assign-on-github", "Assign the PR to the authenticated GitHub user")
-    .option("--takeover", "Transfer PR ownership from another AO session if needed")
     .action(
       async (
         prRef: string,
         sessionName: string | undefined,
-        opts: { assignOnGithub?: boolean; takeover?: boolean },
+        opts: { assignOnGithub?: boolean },
       ) => {
         const config = loadConfig();
         const resolvedSession =
@@ -240,7 +240,6 @@ export function registerSession(program: Command): void {
         try {
           const result = await sm.claimPR(resolvedSession, prRef, {
             assignOnGithub: opts.assignOnGithub,
-            takeover: opts.takeover,
           });
 
           console.log(chalk.green(`\nSession ${resolvedSession} claimed PR #${result.pr.number}.`));

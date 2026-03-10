@@ -38,11 +38,14 @@ const BUILTIN_PLUGINS: Array<{ slot: PluginSlot; name: string; pkg: string }> = 
   // Trackers
   { slot: "tracker", name: "github", pkg: "@composio/ao-plugin-tracker-github" },
   { slot: "tracker", name: "linear", pkg: "@composio/ao-plugin-tracker-linear" },
+  { slot: "tracker", name: "gitlab", pkg: "@composio/ao-plugin-tracker-gitlab" },
   // SCM
   { slot: "scm", name: "github", pkg: "@composio/ao-plugin-scm-github" },
+  { slot: "scm", name: "gitlab", pkg: "@composio/ao-plugin-scm-gitlab" },
   // Notifiers
   { slot: "notifier", name: "composio", pkg: "@composio/ao-plugin-notifier-composio" },
   { slot: "notifier", name: "desktop", pkg: "@composio/ao-plugin-notifier-desktop" },
+  { slot: "notifier", name: "openclaw", pkg: "@composio/ao-plugin-notifier-openclaw" },
   { slot: "notifier", name: "slack", pkg: "@composio/ao-plugin-notifier-slack" },
   { slot: "notifier", name: "webhook", pkg: "@composio/ao-plugin-notifier-webhook" },
   // Terminals
@@ -56,14 +59,17 @@ function extractPluginConfig(
   name: string,
   config: OrchestratorConfig,
 ): Record<string, unknown> | undefined {
+  // Notifiers are configured under config.notifiers.<id>.
+  // Match by key (e.g. "openclaw") or explicit plugin field.
   if (slot === "notifier") {
-    for (const notifierConfig of Object.values(config.notifiers)) {
-      if (
-        notifierConfig &&
-        typeof notifierConfig === "object" &&
-        notifierConfig["plugin"] === name
-      ) {
-        return notifierConfig;
+    for (const [notifierName, notifierConfig] of Object.entries(config.notifiers ?? {})) {
+      if (!notifierConfig || typeof notifierConfig !== "object") continue;
+      const configuredPlugin = (notifierConfig as Record<string, unknown>)["plugin"];
+      const hasExplicitPlugin = typeof configuredPlugin === "string" && configuredPlugin.length > 0;
+      const matches = hasExplicitPlugin ? configuredPlugin === name : notifierName === name;
+      if (matches) {
+        const { plugin: _plugin, ...rest } = notifierConfig as Record<string, unknown>;
+        return rest;
       }
     }
   }

@@ -366,7 +366,7 @@ describe("session kill", () => {
     expect(output).toContain("Session app-1 killed.");
     expect(mockSessionManager.kill).toHaveBeenCalledWith(
       "app-1",
-      expect.objectContaining({ purgeOpenCode: false, onStep: expect.any(Function) }),
+      expect.objectContaining({ purgeOpenCode: true, onStep: expect.any(Function) }),
     );
   });
 
@@ -379,7 +379,7 @@ describe("session kill", () => {
 
     expect(mockSessionManager.kill).toHaveBeenCalledWith(
       "app-1",
-      expect.objectContaining({ purgeOpenCode: false, onStep: expect.any(Function) }),
+      expect.objectContaining({ purgeOpenCode: true, onStep: expect.any(Function) }),
     );
   });
 
@@ -387,6 +387,28 @@ describe("session kill", () => {
     mockSessionManager.kill.mockResolvedValue(undefined);
 
     await program.parseAsync(["node", "test", "session", "kill", "app-1", "--purge-session"]);
+
+    expect(mockSessionManager.kill).toHaveBeenCalledWith(
+      "app-1",
+      expect.objectContaining({ purgeOpenCode: true, onStep: expect.any(Function) }),
+    );
+  });
+
+  it("passes keep-session flag to prevent OpenCode purge", async () => {
+    mockSessionManager.kill.mockResolvedValue(undefined);
+
+    await program.parseAsync(["node", "test", "session", "kill", "app-1", "--keep-session"]);
+
+    expect(mockSessionManager.kill).toHaveBeenCalledWith(
+      "app-1",
+      expect.objectContaining({ purgeOpenCode: false, onStep: expect.any(Function) }),
+    );
+  });
+
+  it("defaults to purge OpenCode session when neither flag is set", async () => {
+    mockSessionManager.kill.mockResolvedValue(undefined);
+
+    await program.parseAsync(["node", "test", "session", "kill", "app-1"]);
 
     expect(mockSessionManager.kill).toHaveBeenCalledWith(
       "app-1",
@@ -448,12 +470,10 @@ describe("session claim-pr", () => {
       "42",
       "app-2",
       "--assign-on-github",
-      "--takeover",
     ]);
 
     expect(mockSessionManager.claimPR).toHaveBeenCalledWith("app-2", "42", {
       assignOnGithub: true,
-      takeover: true,
     });
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
@@ -468,7 +488,6 @@ describe("session claim-pr", () => {
 
     expect(mockSessionManager.claimPR).toHaveBeenCalledWith("app-7", "42", {
       assignOnGithub: undefined,
-      takeover: undefined,
     });
   });
 

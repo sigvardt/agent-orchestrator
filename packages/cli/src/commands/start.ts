@@ -40,7 +40,7 @@ import {
 } from "../lib/web-dir.js";
 import { cleanNextCache } from "../lib/dashboard-rebuild.js";
 import { preflight } from "../lib/preflight.js";
-import { startManagedServices } from "../lib/services.js";
+import { startManagedServices, stopManagedServices } from "../lib/services.js";
 
 const DEFAULT_PORT = 3000;
 
@@ -429,7 +429,7 @@ export function registerStart(program: Command): void {
 export function registerStop(program: Command): void {
   program
     .command("stop [project]")
-    .description("Stop orchestrator agent for a project")
+    .description("Stop orchestrator agent and dashboard for a project")
     .option("--keep-session", "Keep mapped OpenCode session after stopping")
     .option("--purge-session", "Delete mapped OpenCode session when stopping")
     .action(
@@ -461,6 +461,8 @@ export function registerStop(program: Command): void {
             console.log(chalk.yellow("Lifecycle worker not running"));
           }
 
+          // Stop dashboard
+          await stopManagedServices(config, { manager: "auto" });
           console.log(chalk.bold.green("\n✓ Orchestrator stopped\n"));
         } catch (err) {
           if (err instanceof Error) {

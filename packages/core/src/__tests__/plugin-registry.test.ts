@@ -165,6 +165,26 @@ describe("loadBuiltins", () => {
     expect(registry.get("agent", "opencode")).not.toBeNull();
   });
 
+  it("registers gitlab tracker and scm plugins from importFn", async () => {
+    const registry = createPluginRegistry();
+
+    const fakeTracker = makePlugin("tracker", "gitlab");
+    const fakeScm = makePlugin("scm", "gitlab");
+
+    await registry.loadBuiltins(undefined, async (pkg: string) => {
+      if (pkg === "@composio/ao-plugin-tracker-gitlab") return fakeTracker;
+      if (pkg === "@composio/ao-plugin-scm-gitlab") return fakeScm;
+      throw new Error(`Not found: ${pkg}`);
+    });
+
+    expect(registry.list("tracker")).toContainEqual(
+      expect.objectContaining({ name: "gitlab", slot: "tracker" }),
+    );
+    expect(registry.list("scm")).toContainEqual(
+      expect.objectContaining({ name: "gitlab", slot: "scm" }),
+    );
+  });
+
   it("passes configured notifier plugin config to create()", async () => {
     const registry = createPluginRegistry();
     const fakeWebhookNotifier = makePlugin("notifier", "webhook");
@@ -185,7 +205,6 @@ describe("loadBuiltins", () => {
     });
 
     expect(fakeWebhookNotifier.create).toHaveBeenCalledWith({
-      plugin: "webhook",
       url: "http://127.0.0.1:8787/hook",
       retries: 2,
       retryDelayMs: 500,
@@ -211,9 +230,59 @@ describe("loadBuiltins", () => {
     });
 
     expect(fakeWebhookNotifier.create).toHaveBeenCalledWith({
-      plugin: "webhook",
       url: "http://127.0.0.1:8787/custom-hook",
       retries: 4,
+    });
+  });
+
+  it("passes notifier config from config.notifiers when loading builtins", async () => {
+    const registry = createPluginRegistry();
+    const fakeOpenClaw = makePlugin("notifier", "openclaw");
+    const cfg = makeOrchestratorConfig({
+      notifiers: {
+        openclaw: {
+          plugin: "openclaw",
+          url: "http://127.0.0.1:18789/hooks/agent",
+          token: "tok",
+        },
+      },
+    });
+
+    await registry.loadBuiltins(cfg, async (pkg: string) => {
+      if (pkg === "@composio/ao-plugin-notifier-openclaw") return fakeOpenClaw;
+      throw new Error(`Not found: ${pkg}`);
+    });
+
+    expect(fakeOpenClaw.create).toHaveBeenCalledWith({
+      url: "http://127.0.0.1:18789/hooks/agent",
+      token: "tok",
+    });
+  });
+
+  it("does not match notifier key when explicit plugin points to another notifier", async () => {
+    const registry = createPluginRegistry();
+    const fakeOpenClaw = makePlugin("notifier", "openclaw");
+    const fakeWebhook = makePlugin("notifier", "webhook");
+    const cfg = makeOrchestratorConfig({
+      notifiers: {
+        openclaw: {
+          plugin: "webhook",
+          url: "http://127.0.0.1:8787/hook",
+          retries: 3,
+        },
+      },
+    });
+
+    await registry.loadBuiltins(cfg, async (pkg: string) => {
+      if (pkg === "@composio/ao-plugin-notifier-openclaw") return fakeOpenClaw;
+      if (pkg === "@composio/ao-plugin-notifier-webhook") return fakeWebhook;
+      throw new Error(`Not found: ${pkg}`);
+    });
+
+    expect(fakeOpenClaw.create).toHaveBeenCalledWith(undefined);
+    expect(fakeWebhook.create).toHaveBeenCalledWith({
+      url: "http://127.0.0.1:8787/hook",
+      retries: 3,
     });
   });
 });
