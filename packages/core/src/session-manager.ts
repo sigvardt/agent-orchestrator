@@ -501,6 +501,7 @@ function safeJsonParse<T>(str: string): T | null {
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   "spawning",
   "working",
+  "completed",
   "pr_open",
   "waiting_ci",
   "ci_failed",
@@ -2185,8 +2186,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       ]);
 
       // Prefer the live runtime/process check over stale metadata status.
-      // Sessions can sit idle at their prompt with statuses like "done" or
-      // "stuck" while still accepting new input. If the runtime is alive and
+      // Sessions can sit idle at their prompt with statuses like "completed",
+      // "done", or "stuck" while still accepting new input. If the runtime is alive and
       // the agent process is still present, we should deliver directly instead
       // of forcing a restore based only on the recorded status.
       if (runtimeAlive && processRunning) {

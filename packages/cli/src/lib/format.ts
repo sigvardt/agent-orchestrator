@@ -31,6 +31,8 @@ export function statusColor(status: string): string {
   switch (status) {
     case "working":
       return chalk.green(status);
+    case "completed":
+      return chalk.cyan(status);
     case "idle":
       return chalk.yellow(status);
     case "pr_open":

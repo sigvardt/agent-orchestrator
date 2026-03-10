@@ -50,7 +50,7 @@ export { TERMINAL_STATUSES, TERMINAL_ACTIVITIES, NON_RESTORABLE_STATUSES };
  * 3. review  — CI failed, changes requested, conflicts. Needs investigation.
  * 4. pending — Waiting on external (reviewer, CI). Nothing to do right now.
  * 5. working — Agents doing their thing. Don't interrupt.
- * 6. done    — Merged or terminated. Archive.
+ * 6. done    — Completed, merged, or terminated. Archive.
  */
 export type AttentionLevel = "merge" | "respond" | "review" | "pending" | "working" | "done";
 
@@ -195,6 +195,7 @@ export function isPRMergeReady(pr: DashboardPR): boolean {
 export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   // ── Done: terminal states ─────────────────────────────────────────
   if (
+    session.status === "completed" ||
     session.status === "merged" ||
     session.status === "killed" ||
     session.status === "cleanup" ||

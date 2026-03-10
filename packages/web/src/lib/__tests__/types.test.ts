@@ -62,6 +62,11 @@ describe("getAttentionLevel", () => {
       expect(getAttentionLevel(session)).toBe("done");
     });
 
+    it("should return 'done' for completed status", () => {
+      const session = createSession({ status: "completed" });
+      expect(getAttentionLevel(session)).toBe("done");
+    });
+
     it("should return 'done' for terminated status", () => {
       const session = createSession({ status: "terminated" });
       expect(getAttentionLevel(session)).toBe("done");

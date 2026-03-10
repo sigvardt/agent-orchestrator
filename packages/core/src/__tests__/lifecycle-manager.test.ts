@@ -598,6 +598,126 @@ describe("check (single session)", () => {
     expect(lm.getStates().get("app-1")).toBe("killed");
   });
 
+  it("detects completed when agent reports ready without a PR", async () => {
+    vi.useFakeTimers();
+    const transitionTime = new Date("2026-03-10T12:00:00.000Z");
+    vi.setSystemTime(transitionTime);
+    config.notificationRouting.info = ["desktop"];
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    vi.mocked(mockAgent.getActivityState).mockResolvedValue({
+      state: "ready",
+      timestamp: transitionTime,
+    });
+
+    const session = makeSession({ status: "working", pr: null });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("completed");
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["status"]).toBe("completed");
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "session.completed",
+        priority: "info",
+        idempotencyKey: computeEventIdempotencyKey(
+          "app-1",
+          "session.completed",
+          "working",
+          "completed",
+          transitionTime,
+        ),
+      }),
+    );
+  });
+
+  it("emits completed before escalating a long-idle session to stuck", async () => {
+    config.notificationRouting.info = ["desktop"];
+    config.notificationRouting.urgent = ["desktop"];
+    config.reactions["agent-stuck"] = {
+      auto: true,
+      action: "notify",
+      priority: "urgent",
+      threshold: "1m",
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const idleTimestamp = new Date(Date.now() - 120_000);
+    vi.mocked(mockAgent.getActivityState).mockResolvedValue({
+      state: "idle",
+      timestamp: idleTimestamp,
+    });
+
+    const session = makeSession({ status: "working", pr: null });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+    expect(lm.getStates().get("app-1")).toBe("completed");
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("stuck");
+    expect(vi.mocked(mockNotifier.notify).mock.calls.map(([event]) => event.type)).toEqual([
+      "session.completed",
+      "reaction.triggered",
+    ]);
+  });
+
   it("stays working when agent is idle but process is still running (fallback path)", async () => {
     vi.mocked(mockAgent.getActivityState).mockResolvedValue(null);
     vi.mocked(mockAgent.detectActivity).mockReturnValue("idle");
@@ -622,6 +742,54 @@ describe("check (single session)", () => {
     await lm.check("app-1");
 
     expect(lm.getStates().get("app-1")).toBe("working");
+  });
+
+  it("returns completed sessions to working when the agent becomes active again", async () => {
+    config.notificationRouting.info = ["desktop"];
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    vi.mocked(mockAgent.getActivityState).mockResolvedValue({ state: "active" });
+
+    const session = makeSession({ status: "completed", pr: null });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "completed",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("working");
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["status"]).toBe("working");
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "session.working",
+        priority: "info",
+      }),
+    );
   });
 
   it("detects needs_input from agent", async () => {
@@ -1925,15 +2093,10 @@ describe("reactions", () => {
     expect(getLifecycleLogs()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          event: "notification.deduplicated",
+          event: "notification.skipped",
           eventType: "session.completed",
-          idempotencyKey: computeEventIdempotencyKey(
-            "app-1",
-            "merge.ready",
-            "pr_open",
-            "mergeable",
-            transitionTime,
-          ),
+          priority: "info",
+          reason: "no_notifiers_configured",
         }),
       ]),
     );
@@ -2064,8 +2227,10 @@ describe("reactions", () => {
           fallbackApplied: true,
         }),
         expect.objectContaining({
-          event: "notification.deduplicated",
+          event: "notification.skipped",
           eventType: "session.completed",
+          priority: "info",
+          reason: "no_notifiers_configured",
         }),
       ]),
     );

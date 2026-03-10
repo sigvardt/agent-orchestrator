@@ -26,6 +26,7 @@ export type SessionId = string;
 export type SessionStatus =
   | "spawning"
   | "working"
+  | "completed"
   | "pr_open"
   | "waiting_ci"
   | "ci_failed"
@@ -75,6 +76,7 @@ export const DEFAULT_READY_THRESHOLD_MS = 300_000; // 5 minutes
 export const SESSION_STATUS = {
   SPAWNING: "spawning" as const,
   WORKING: "working" as const,
+  COMPLETED: "completed" as const,
   PR_OPEN: "pr_open" as const,
   WAITING_CI: "waiting_ci" as const,
   CI_FAILED: "ci_failed" as const,

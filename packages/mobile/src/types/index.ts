@@ -6,6 +6,7 @@
 export type SessionStatus =
   | "spawning"
   | "working"
+  | "completed"
   | "pr_open"
   | "waiting_ci"
   | "ci_failed"
@@ -145,6 +146,7 @@ export function isPRRateLimited(pr: DashboardPR): boolean {
 export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   // Done: terminal states
   if (
+    session.status === "completed" ||
     session.status === "merged" ||
     session.status === "killed" ||
     session.status === "cleanup" ||

@@ -66,7 +66,7 @@ function inferPriority(type: EventType): EventPriority {
   if (type.includes("stuck") || type.includes("needs_input") || type.includes("errored")) {
     return "urgent";
   }
-  if (type.startsWith("summary.")) {
+  if (type === "session.completed" || type.startsWith("summary.")) {
     return "info";
   }
   if (
@@ -199,6 +199,8 @@ function statusToEventType(_from: SessionStatus | undefined, to: SessionStatus):
   switch (to) {
     case "working":
       return "session.working";
+    case "completed":
+      return "session.completed";
     case "pr_open":
       return "pr.created";
     case "ci_failed":
@@ -1145,6 +1147,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // Track activity state across steps so stuck detection can run after PR checks
     let detectedIdleTimestamp: Date | null = null;
+    let detectedCompletionState: "ready" | "idle" | null = null;
     let preserveCurrentStatus = false;
     let agentExitedWithOpenPR = false;
     let retryExitedSessionAfterPrLookupError = false;
@@ -1189,25 +1192,20 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             }
           }
 
-          // Stuck detection: if agent is idle/blocked beyond the configured threshold,
-          // transition to "stuck" so the agent-stuck reaction can fire.
-          // BUT: if the session already has a PR, fall through to step 4 so
-          // merge-readiness is checked first. Without this, stuck detection
-          // short-circuits before the PR state checks and "mergeable" is
-          // never reached — causing the pipeline to stall.
+          if (activityState.state === "ready" || activityState.state === "idle") {
+            detectedCompletionState = activityState.state;
+          }
+
+          // Stuck/completion detection runs after PR auto-detection so sessions
+          // with branch-backed PRs can still be promoted into PR states first.
           if (
             (activityState.state === "idle" || activityState.state === "blocked") &&
             activityState.timestamp
           ) {
-            if (isIdleBeyondThreshold(session, activityState.timestamp) && !session.pr) {
-              return "stuck";
-            }
-            // Store idle timestamp for post-PR-check stuck detection (step 4b)
             detectedIdleTimestamp = activityState.timestamp;
           }
 
-          // active/ready/idle (below threshold)/blocked (below threshold) —
-          // proceed to PR checks below
+          // active/ready/idle/blocked — proceed to PR checks below
         } else {
           // getActivityState returned null — fall back to terminal output parsing
           const runtime = registry.get<Runtime>(
@@ -1363,15 +1361,31 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       return currentStatus;
     }
 
-    // 5. Post-all stuck detection: if we detected idle in step 2 but had no PR,
-    // still check stuck threshold. This handles agents that finish without creating a PR.
+    // 5. Agents can finish a turn without exiting. When they become ready/idle and
+    // no PR state takes precedence, surface that as a non-terminal completed state.
+    if (!session.pr && detectedCompletionState) {
+      if (
+        currentStatus === SESSION_STATUS.COMPLETED &&
+        detectedIdleTimestamp &&
+        isIdleBeyondThreshold(session, detectedIdleTimestamp)
+      ) {
+        return SESSION_STATUS.STUCK;
+      }
+
+      return SESSION_STATUS.COMPLETED;
+    }
+
+    // 6. Post-all stuck detection: if we detected idle in step 2 but had no PR,
+    // still check stuck threshold. This handles agents that stay inactive after
+    // completion detection was already emitted.
     if (detectedIdleTimestamp && isIdleBeyondThreshold(session, detectedIdleTimestamp)) {
       return "stuck";
     }
 
-    // 6. Default: if agent is active, it's working
+    // 7. Default: if agent is active again, it's working
     if (
       currentStatus === SESSION_STATUS.SPAWNING ||
+      currentStatus === SESSION_STATUS.COMPLETED ||
       currentStatus === SESSION_STATUS.STUCK ||
       currentStatus === SESSION_STATUS.NEEDS_INPUT
     ) {
