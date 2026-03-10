@@ -40,7 +40,7 @@ import {
 } from "../lib/web-dir.js";
 import { cleanNextCache } from "../lib/dashboard-rebuild.js";
 import { preflight } from "../lib/preflight.js";
-import { startManagedServices } from "../lib/services.js";
+import { startManagedServices, stopManagedServices } from "../lib/services.js";
 
 const DEFAULT_PORT = 3000;
 
@@ -438,7 +438,6 @@ export function registerStop(program: Command): void {
           const config = loadConfig();
           const { projectId: _projectId, project } = resolveProject(config, projectArg);
           const sessionId = `${project.sessionPrefix}-orchestrator`;
-          const port = config.port ?? 3000;
 
           console.log(chalk.bold(`\nStopping orchestrator for ${chalk.cyan(project.name)}\n`));
 
@@ -463,7 +462,7 @@ export function registerStop(program: Command): void {
           }
 
           // Stop dashboard
-          await stopDashboard(port);
+          await stopManagedServices(config, { manager: "auto" });
           console.log(chalk.bold.green("\n✓ Orchestrator stopped\n"));
         } catch (err) {
           if (err instanceof Error) {
