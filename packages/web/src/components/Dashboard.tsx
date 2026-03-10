@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type DashboardSession,
   type DashboardStats,
@@ -117,6 +117,10 @@ export function Dashboard({
     if (!globalPause) return null;
     return new Date(globalPause.pausedUntil).toLocaleString();
   }, [globalPause]);
+
+  useEffect(() => {
+    setGlobalPauseDismissed(false);
+  }, [globalPause?.pausedUntil, globalPause?.reason, globalPause?.sourceSessionId]);
 
   return (
     <div className="flex h-screen">

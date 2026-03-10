@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { Dashboard } from "@/components/Dashboard";
 import type { GlobalPauseState } from "@/lib/types";
 import { makeSession } from "@/__tests__/helpers";
@@ -202,5 +202,39 @@ describe("Dashboard globalPause banner", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Orchestrator paused:/)).not.toBeInTheDocument();
     });
+  });
+
+  it("shows a new pause after dismissing a previous one", () => {
+    const sessions = [makeSession()];
+    const firstPause = makeGlobalPause({
+      reason: "First pause",
+      pausedUntil: "2026-03-10T12:00:00.000Z",
+    });
+    const secondPause = makeGlobalPause({
+      reason: "Second pause",
+      pausedUntil: "2026-03-10T13:00:00.000Z",
+    });
+
+    const { rerender } = render(
+      <Dashboard initialSessions={sessions} stats={defaultStats} initialGlobalPause={firstPause} />,
+    );
+
+    expect(screen.getByText(/First pause/)).toBeInTheDocument();
+
+    const dismissButtons = screen.getAllByLabelText("Dismiss");
+    act(() => {
+      fireEvent.click(dismissButtons[0]);
+    });
+    expect(screen.queryByText(/Orchestrator paused:/)).not.toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        initialSessions={sessions}
+        stats={defaultStats}
+        initialGlobalPause={secondPause}
+      />,
+    );
+
+    expect(screen.getByText(/Second pause/)).toBeInTheDocument();
   });
 });
