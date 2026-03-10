@@ -83,6 +83,16 @@ describe.skipIf(!tmuxOk)("CLI-Core integration (hash-based architecture)", () =>
         info: [],
       },
       reactions: {},
+      progressChecks: {
+        enabled: false,
+        intervalMinutes: 10,
+        terminalLines: 50,
+        signals: {
+          errorPatterns: ["Error:", "FAIL", "TypeError", "ECONNREFUSED"],
+          testPatterns: ["npm test", "pnpm test", "pytest", "cargo test", "go test"],
+          livePatterns: [],
+        },
+      },
     };
 
     configPath = join(tmpDir, "agent-orchestrator.yaml");
@@ -180,6 +190,16 @@ describe.skipIf(!tmuxOk)("CLI-Core integration (hash-based architecture)", () =>
         info: [],
       },
       reactions: {},
+      progressChecks: {
+        enabled: false,
+        intervalMinutes: 10,
+        terminalLines: 50,
+        signals: {
+          errorPatterns: ["Error:", "FAIL", "TypeError", "ECONNREFUSED"],
+          testPatterns: ["npm test", "pnpm test", "pytest", "cargo test", "go test"],
+          livePatterns: [],
+        },
+      },
     };
 
     const registry = createPluginRegistry();
@@ -247,6 +267,16 @@ describe.skipIf(!tmuxOk)("CLI-Core integration (hash-based architecture)", () =>
         info: [],
       },
       reactions: {},
+      progressChecks: {
+        enabled: false,
+        intervalMinutes: 10,
+        terminalLines: 50,
+        signals: {
+          errorPatterns: ["Error:", "FAIL", "TypeError", "ECONNREFUSED"],
+          testPatterns: ["npm test", "pnpm test", "pytest", "cargo test", "go test"],
+          livePatterns: [],
+        },
+      },
     };
 
     // Write metadata for project A

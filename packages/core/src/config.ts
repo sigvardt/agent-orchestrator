@@ -67,6 +67,34 @@ const AgentSpecificConfigSchema = z
   })
   .passthrough();
 
+const ProgressCheckSignalsSchema = z.object({
+  errorPatterns: z.array(z.string()).default(["Error:", "FAIL", "TypeError", "ECONNREFUSED"]),
+  testPatterns: z
+    .array(z.string())
+    .default(["npm test", "pnpm test", "pytest", "cargo test", "go test"]),
+  livePatterns: z.array(z.string()).default([]),
+});
+
+const ProgressChecksNotifySchema = z
+  .union([z.string(), z.array(z.string())])
+  .transform((value) => (typeof value === "string" ? [value] : value));
+
+const ProgressChecksSchema = z.object({
+  enabled: z.boolean().default(false),
+  intervalMinutes: z.number().int().positive().default(10),
+  terminalLines: z.number().int().positive().default(50),
+  notify: ProgressChecksNotifySchema.optional(),
+  signals: ProgressCheckSignalsSchema.default({}),
+});
+
+const ProjectProgressChecksSchema = z.object({
+  enabled: z.boolean().optional(),
+  intervalMinutes: z.number().int().positive().optional(),
+  terminalLines: z.number().int().positive().optional(),
+  notify: ProgressChecksNotifySchema.optional(),
+  signals: ProgressCheckSignalsSchema.partial().optional(),
+});
+
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
   repo: z.string(),
@@ -92,6 +120,7 @@ const ProjectConfigSchema = z.object({
     .enum(["reuse", "delete", "ignore", "delete-new", "ignore-new", "kill-previous"])
     .optional(),
   opencodeIssueSessionStrategy: z.enum(["reuse", "delete", "ignore"]).optional(),
+  progressChecks: ProjectProgressChecksSchema.optional(),
 });
 
 const DefaultPluginsSchema = z.object({
@@ -116,6 +145,7 @@ const OrchestratorConfigSchema = z.object({
     info: ["composio"],
   }),
   reactions: z.record(ReactionConfigSchema).default({}),
+  progressChecks: ProgressChecksSchema.default({}),
 });
 
 // =============================================================================

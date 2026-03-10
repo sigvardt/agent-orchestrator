@@ -11,6 +11,8 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   SESSION_STATUS,
   PR_STATE,
@@ -38,11 +40,15 @@ import {
   type SessionKillStepResult,
   type ReviewComment,
   type AutomatedComment,
+  type ProgressChecksConfig,
+  type ProgressCheckSnapshot,
   type ProjectConfig as _ProjectConfig,
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
 import { getSessionsDir } from "./paths.js";
 import { deleteLocalBranch, forceRemoveGitWorktree } from "./session-manager.js";
+
+const execFileAsync = promisify(execFile);
 
 /** Parse a duration string like "10m", "30s", "1h" to milliseconds. */
 function parseDuration(str: string): number {
@@ -361,6 +367,299 @@ function createPollStats(): LifecyclePollStats {
   };
 }
 
+const GIT_PROGRESS_TIMEOUT_MS = 5_000;
+const TMUX_ACTIVITY_TIMEOUT_MS = 5_000;
+const PROGRESS_IDLE_THRESHOLD_MS = 60_000;
+
+interface ProgressSignalHistory {
+  errorPatterns: Set<string>;
+  testCommandsSeen: Set<string>;
+  liveCommandsSeen: Set<string>;
+  lastOutputFingerprint: string | null;
+  lastOutputAtMs: number | null;
+}
+
+interface CapturedTerminalOutput {
+  text: string;
+  truncated: boolean;
+}
+
+interface ProgressGitState {
+  branch: string | null;
+  commitsSinceSpawn: number;
+  lastCommitAgeMinutes: number | null;
+  dirtyFiles: string[];
+  hasPushed: boolean;
+}
+
+function createProgressSignalHistory(): ProgressSignalHistory {
+  return {
+    errorPatterns: new Set<string>(),
+    testCommandsSeen: new Set<string>(),
+    liveCommandsSeen: new Set<string>(),
+    lastOutputFingerprint: null,
+    lastOutputAtMs: null,
+  };
+}
+
+function parseInteger(value: string | undefined): number {
+  if (!value) return 0;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value * 10) / 10));
+}
+
+function toElapsedSeconds(sinceMs: number, nowMs: number): number {
+  return Math.max(0, Math.floor((nowMs - sinceMs) / 1000));
+}
+
+function toElapsedMinutes(sinceMs: number, nowMs: number): number {
+  return Math.max(0, Math.floor((nowMs - sinceMs) / 60_000));
+}
+
+function resolveProgressChecksConfigForProject(
+  config: OrchestratorConfig,
+  projectId: string,
+): ProgressChecksConfig | null {
+  const project = config.projects[projectId];
+  if (!project) return null;
+
+  const projectOverride = project.progressChecks;
+  const resolved: ProgressChecksConfig = {
+    enabled: projectOverride?.enabled ?? config.progressChecks.enabled,
+    intervalMinutes: projectOverride?.intervalMinutes ?? config.progressChecks.intervalMinutes,
+    terminalLines: projectOverride?.terminalLines ?? config.progressChecks.terminalLines,
+    notify: projectOverride?.notify ?? config.progressChecks.notify,
+    signals: {
+      errorPatterns:
+        projectOverride?.signals?.errorPatterns ?? config.progressChecks.signals.errorPatterns,
+      testPatterns:
+        projectOverride?.signals?.testPatterns ?? config.progressChecks.signals.testPatterns,
+      livePatterns:
+        projectOverride?.signals?.livePatterns ?? config.progressChecks.signals.livePatterns,
+    },
+  };
+
+  return resolved.enabled ? resolved : null;
+}
+
+function normalizeMatchLabel(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  return trimmed.length > 160 ? `${trimmed.slice(0, 157)}...` : trimmed;
+}
+
+function collectPatternMatches(text: string, patterns: string[]): string[] {
+  const matches = new Set<string>();
+
+  for (const pattern of patterns) {
+    try {
+      const regex = new RegExp(pattern, "gim");
+      const match = regex.exec(text);
+      if (match?.[0]) {
+        matches.add(normalizeMatchLabel(match[0], pattern));
+      }
+      continue;
+    } catch {
+      // Fall back to literal substring matching below.
+    }
+
+    if (text.toLowerCase().includes(pattern.toLowerCase())) {
+      matches.add(pattern);
+    }
+  }
+
+  return [...matches];
+}
+
+function parseBudgetRemainingFromTerminal(text: string): number | undefined {
+  const patterns = [
+    /\b(\d+(?:\.\d+)?)%\s+(?:left|remaining)\b/i,
+    /\b(?:left|remaining)\s*[:=]?\s*(\d+(?:\.\d+)?)%/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) continue;
+
+    const parsed = Number(match[1]);
+    if (Number.isFinite(parsed)) {
+      return clampPercent(parsed);
+    }
+  }
+
+  return undefined;
+}
+
+function resolveSnapshotModel(session: Session, project: _ProjectConfig): string | null {
+  const configuredModel = project.agentConfig?.model;
+  if (typeof configuredModel === "string" && configuredModel.trim()) {
+    return configuredModel.trim();
+  }
+
+  const summary = session.agentInfo?.summary;
+  if (typeof summary !== "string") return null;
+
+  const match = summary.match(/\(([^)]+)\)/);
+  return match?.[1]?.trim() || null;
+}
+
+async function resolveBudgetRemainingPct(
+  agent: Agent | null,
+  session: Session,
+  terminalOutput: string,
+): Promise<number | undefined> {
+  if (agent?.getUsageSnapshot) {
+    try {
+      const usage = await agent.getUsageSnapshot(session);
+      if (usage) {
+        const remainingDial = usage.dials.find(
+          (dial) =>
+            dial.status === "available" && dial.kind === "percent_remaining" && dial.value !== null,
+        );
+        if (remainingDial?.value !== null && remainingDial?.value !== undefined) {
+          return clampPercent(remainingDial.value);
+        }
+
+        const usedDial = usage.dials.find(
+          (dial) =>
+            dial.status === "available" && dial.kind === "percent_used" && dial.value !== null,
+        );
+        if (usedDial?.value !== null && usedDial?.value !== undefined) {
+          return clampPercent(100 - usedDial.value);
+        }
+      }
+    } catch {
+      // Fall back to terminal parsing below.
+    }
+  }
+
+  return parseBudgetRemainingFromTerminal(terminalOutput);
+}
+
+async function captureTerminalOutput(
+  runtime: Runtime | null,
+  handle: Session["runtimeHandle"],
+  lines: number,
+): Promise<CapturedTerminalOutput> {
+  if (!runtime || !handle) {
+    return { text: "", truncated: false };
+  }
+
+  try {
+    const output = await runtime.getOutput(handle, lines + 1);
+    const rawLines = output === "" ? [] : output.split("\n");
+    const truncated = rawLines.length > lines;
+    const visibleLines = truncated ? rawLines.slice(-lines) : rawLines;
+    return {
+      text: visibleLines.join("\n"),
+      truncated,
+    };
+  } catch {
+    return { text: "", truncated: false };
+  }
+}
+
+async function runGitProgressCommand(args: string[], cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      timeout: GIT_PROGRESS_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    });
+    return stdout.trimEnd();
+  } catch {
+    return null;
+  }
+}
+
+function parseDirtyFiles(output: string | null): string[] {
+  if (!output) return [];
+
+  return output
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => {
+      const path = line.slice(3).trim();
+      const renamed = path.includes(" -> ") ? (path.split(" -> ").at(-1) ?? path) : path;
+      return renamed;
+    });
+}
+
+async function collectGitState(session: Session, nowMs: number): Promise<ProgressGitState> {
+  const workspacePath = session.workspacePath;
+  if (!workspacePath) {
+    return {
+      branch: session.branch,
+      commitsSinceSpawn: 0,
+      lastCommitAgeMinutes: null,
+      dirtyFiles: [],
+      hasPushed: Boolean(session.pr),
+    };
+  }
+
+  const createdAtIso = session.createdAt.toISOString();
+  const [branchOutput, commitCountOutput, lastCommitOutput, dirtyOutput, upstreamOutput] =
+    await Promise.all([
+      runGitProgressCommand(["branch", "--show-current"], workspacePath),
+      runGitProgressCommand(
+        ["rev-list", "--count", `--since=${createdAtIso}`, "HEAD"],
+        workspacePath,
+      ),
+      runGitProgressCommand(["log", "-1", "--format=%ct"], workspacePath),
+      runGitProgressCommand(["status", "--porcelain", "--untracked-files=all"], workspacePath),
+      runGitProgressCommand(
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        workspacePath,
+      ),
+    ]);
+
+  const lastCommitSeconds = lastCommitOutput ? Number.parseInt(lastCommitOutput, 10) : Number.NaN;
+
+  return {
+    branch: branchOutput?.trim() || session.branch,
+    commitsSinceSpawn: commitCountOutput
+      ? Math.max(0, Number.parseInt(commitCountOutput, 10) || 0)
+      : 0,
+    lastCommitAgeMinutes: Number.isFinite(lastCommitSeconds)
+      ? toElapsedMinutes(lastCommitSeconds * 1000, nowMs)
+      : null,
+    dirtyFiles: parseDirtyFiles(dirtyOutput),
+    hasPushed: Boolean(upstreamOutput?.trim()) || Boolean(session.pr),
+  };
+}
+
+async function getLastOutputAtMs(session: Session): Promise<number | null> {
+  if (!session.runtimeHandle || session.runtimeHandle.runtimeName !== "tmux") {
+    return null;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "tmux",
+      ["display-message", "-t", session.runtimeHandle.id, "-p", "#{session_activity}"],
+      { timeout: TMUX_ACTIVITY_TIMEOUT_MS },
+    );
+    const parsed = Number.parseInt(stdout.trim(), 10);
+    return Number.isFinite(parsed) ? parsed * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function createProgressSnapshotIdempotencyKey(
+  sessionId: SessionId,
+  snapshotNumber: number,
+): string {
+  return createHash("sha256")
+    .update([sessionId, "progress-check", String(snapshotNumber)].join(":"))
+    .digest("hex");
+}
+
 const OPEN_PR_STATUS_POLL_INTERVAL_MS = 60_000;
 const WAITING_CI_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_CI_REACTION_REFIRE_INTERVAL_MS = 120_000;
@@ -591,6 +890,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"
+  const progressSignalHistory = new Map<SessionId, ProgressSignalHistory>();
   const recentEventIdempotencyKeys = new Map<string, number>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let polling = false; // re-entrancy guard
@@ -1912,6 +2212,182 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     session.metadata = cleaned;
   }
 
+  function getEffectiveSessionStatus(session: Session): SessionStatus {
+    const tracked = states.get(session.id);
+    return tracked ?? (session.metadata["status"] as SessionStatus | undefined) ?? session.status;
+  }
+
+  function isProgressSnapshotDue(session: Session): boolean {
+    const progressChecks = resolveProgressChecksConfigForProject(config, session.projectId);
+    if (!progressChecks) return false;
+    if (INACTIVE_SESSION_STATUSES.has(getEffectiveSessionStatus(session))) return false;
+
+    const intervalMs = progressChecks.intervalMinutes * 60_000;
+    const nowMs = Date.now();
+    const lastSnapshotAtMs = parseTimestampMs(session.metadata["lastProgressSnapshotAt"]);
+    if (lastSnapshotAtMs !== null) {
+      return nowMs - lastSnapshotAtMs >= intervalMs;
+    }
+
+    return nowMs - session.createdAt.getTime() >= intervalMs;
+  }
+
+  async function buildProgressSnapshot(
+    session: Session,
+    progressChecks: ProgressChecksConfig,
+    agentName: string,
+    runtime: Runtime | null,
+    agent: Agent | null,
+    snapshotNumber: number,
+  ): Promise<ProgressCheckSnapshot> {
+    const nowMs = Date.now();
+    const history = progressSignalHistory.get(session.id) ?? createProgressSignalHistory();
+    const project = config.projects[session.projectId];
+    const terminal = await captureTerminalOutput(
+      runtime,
+      session.runtimeHandle,
+      progressChecks.terminalLines,
+    );
+    const matchedErrorPatterns = collectPatternMatches(
+      terminal.text,
+      progressChecks.signals.errorPatterns,
+    );
+    const matchedTestCommands = collectPatternMatches(
+      terminal.text,
+      progressChecks.signals.testPatterns,
+    );
+    const matchedLiveCommands = collectPatternMatches(
+      terminal.text,
+      progressChecks.signals.livePatterns,
+    );
+
+    for (const match of matchedErrorPatterns) history.errorPatterns.add(match);
+    for (const match of matchedTestCommands) history.testCommandsSeen.add(match);
+    for (const match of matchedLiveCommands) history.liveCommandsSeen.add(match);
+
+    const terminalFingerprint = createHash("sha1").update(terminal.text).digest("hex");
+    const tmuxLastOutputAtMs = await getLastOutputAtMs(session);
+    const lastOutputAtMs =
+      tmuxLastOutputAtMs ??
+      (history.lastOutputFingerprint !== terminalFingerprint
+        ? nowMs
+        : (history.lastOutputAtMs ?? session.lastActivityAt.getTime()));
+
+    history.lastOutputFingerprint = terminalFingerprint;
+    history.lastOutputAtMs = lastOutputAtMs;
+    progressSignalHistory.set(session.id, history);
+
+    const idleSeconds = toElapsedSeconds(lastOutputAtMs, nowMs);
+    const gitState = await collectGitState(session, nowMs);
+    const budgetRemainingPct = await resolveBudgetRemainingPct(agent, session, terminal.text);
+
+    return {
+      event: "progress-check",
+      session: session.id,
+      project: session.projectId,
+      issue: session.issueId,
+      agent: agentName,
+      model: project ? resolveSnapshotModel(session, project) : null,
+      timing: {
+        age_minutes: toElapsedMinutes(session.createdAt.getTime(), nowMs),
+        ...(budgetRemainingPct !== undefined ? { budget_remaining_pct: budgetRemainingPct } : {}),
+        last_output_seconds_ago: idleSeconds,
+        snapshot_number: snapshotNumber,
+      },
+      git: {
+        branch: gitState.branch,
+        commits_since_spawn: gitState.commitsSinceSpawn,
+        last_commit_age_minutes: gitState.lastCommitAgeMinutes,
+        dirty_files: gitState.dirtyFiles,
+        has_pr: Boolean(session.pr),
+      },
+      signals: {
+        idle: idleSeconds >= PROGRESS_IDLE_THRESHOLD_MS / 1000,
+        idle_seconds: idleSeconds,
+        error_patterns: [...history.errorPatterns],
+        test_commands_seen: [...history.testCommandsSeen],
+        live_commands_seen: [...history.liveCommandsSeen],
+        has_pushed: gitState.hasPushed,
+      },
+      terminal: {
+        last_lines: terminal.text,
+        truncated: terminal.truncated,
+      },
+    };
+  }
+
+  async function emitProgressSnapshot(
+    session: Session,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    const project = config.projects[session.projectId];
+    const progressChecks = resolveProgressChecksConfigForProject(config, session.projectId);
+    if (!project || !progressChecks) return;
+    if (INACTIVE_SESSION_STATUSES.has(getEffectiveSessionStatus(session))) return;
+
+    const agentName = session.metadata["agent"] ?? project.agent ?? config.defaults.agent;
+    const runtimeName =
+      session.runtimeHandle?.runtimeName ?? project.runtime ?? config.defaults.runtime;
+    const runtime = registry.get<Runtime>("runtime", runtimeName);
+    const agent = registry.get<Agent>("agent", agentName);
+    const snapshotNumber = parseInteger(session.metadata["progressSnapshotCount"]) + 1;
+    const snapshot = await buildProgressSnapshot(
+      session,
+      progressChecks,
+      agentName,
+      runtime,
+      agent,
+      snapshotNumber,
+    );
+    const nowIso = new Date().toISOString();
+
+    updateSessionMetadata(session, {
+      lastProgressSnapshotAt: nowIso,
+      progressSnapshotCount: String(snapshotNumber),
+    });
+
+    const event = createEvent("progress-check", {
+      sessionId: session.id,
+      projectId: session.projectId,
+      message: `${session.id}: progress snapshot #${snapshotNumber}`,
+      data: snapshot as unknown as Record<string, unknown>,
+      idempotencyKey: createProgressSnapshotIdempotencyKey(session.id, snapshotNumber),
+    });
+
+    logLifecycle("info", "progress.snapshot.created", {
+      pollId: pollStats?.pollId,
+      projectId: session.projectId,
+      sessionId: session.id,
+      snapshotNumber,
+      agent: agentName,
+    });
+
+    await notifyHuman(event, "info", pollStats, progressChecks.notify);
+  }
+
+  async function emitDueProgressSnapshots(
+    sessions: Session[],
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    const dueSessions = sessions.filter((session) => isProgressSnapshotDue(session));
+    if (dueSessions.length === 0) return;
+
+    const results = await Promise.allSettled(
+      dueSessions.map((session) => emitProgressSnapshot(session, pollStats)),
+    );
+
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled") continue;
+      incrementPollError(pollStats);
+      logLifecycle("error", "progress.snapshot.failed", {
+        pollId: pollStats?.pollId,
+        projectId: dueSessions[index]?.projectId,
+        sessionId: dueSessions[index]?.id,
+        error: result.reason,
+      });
+    }
+  }
+
   function makeFingerprint(ids: string[]): string {
     return [...ids].sort().join(",");
   }
@@ -2102,9 +2578,13 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     event: OrchestratorEvent,
     priority: EventPriority,
     pollStats?: LifecyclePollStats,
+    notifierNamesOverride?: string[],
   ): Promise<void> {
     const eventWithPriority = { ...event, priority };
-    const notifierNames = config.notificationRouting[priority] ?? config.defaults.notifiers;
+    const notifierNames =
+      notifierNamesOverride && notifierNamesOverride.length > 0
+        ? notifierNamesOverride
+        : (config.notificationRouting[priority] ?? config.defaults.notifiers);
 
     if (notifierNames.length === 0) {
       logLifecycle("info", "notification.skipped", {
@@ -2409,6 +2889,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         }
       }
 
+      await emitDueProgressSnapshots(sessions, pollStats);
+
       // Prune stale entries from states and reactionTrackers for sessions
       // that no longer appear in the session list (e.g., after kill/cleanup)
       const currentSessionIds = new Set(sessions.map((s) => s.id));
@@ -2421,6 +2903,11 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         const sessionId = trackerKey.split(":")[0];
         if (sessionId && !currentSessionIds.has(sessionId)) {
           reactionTrackers.delete(trackerKey);
+        }
+      }
+      for (const sessionId of progressSignalHistory.keys()) {
+        if (!currentSessionIds.has(sessionId)) {
+          progressSignalHistory.delete(sessionId);
         }
       }
 

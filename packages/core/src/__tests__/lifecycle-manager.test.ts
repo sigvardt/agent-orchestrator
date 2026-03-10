@@ -131,6 +131,7 @@ beforeEach(() => {
     getActivityState: vi.fn().mockResolvedValue({ state: "active" as ActivityState }),
     isProcessRunning: vi.fn().mockResolvedValue(true),
     getSessionInfo: vi.fn().mockResolvedValue(null),
+    getUsageSnapshot: vi.fn().mockResolvedValue(null),
   };
 
   mockRegistry = {
@@ -184,6 +185,16 @@ beforeEach(() => {
       info: [],
     },
     reactions: {},
+    progressChecks: {
+      enabled: false,
+      intervalMinutes: 10,
+      terminalLines: 50,
+      signals: {
+        errorPatterns: ["Error:", "FAIL", "TypeError", "ECONNREFUSED"],
+        testPatterns: ["npm test", "pnpm test", "pytest", "cargo test", "go test"],
+        livePatterns: [],
+      },
+    },
     readyThresholdMs: 300_000,
   };
 
@@ -221,6 +232,156 @@ describe("start / stop", () => {
     lm.stop();
     // Should not throw on double stop
     lm.stop();
+  });
+});
+
+describe("progress snapshots", () => {
+  it("emits progress-check events with git state and terminal signals", async () => {
+    config.progressChecks = {
+      enabled: true,
+      intervalMinutes: 10,
+      terminalLines: 5,
+      notify: ["webhook"],
+      signals: {
+        errorPatterns: ["Error:"],
+        testPatterns: ["pnpm test"],
+        livePatterns: ["curl"],
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-webhook",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "webhook") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const repoPath = config.projects["my-app"].path;
+    mkdirSync(repoPath, { recursive: true });
+    runGit(repoPath, "init");
+    runGit(repoPath, "config", "user.email", "ao@example.com");
+    runGit(repoPath, "config", "user.name", "Agent Orchestrator");
+    writeFileSync(join(repoPath, "app.txt"), "hello\n");
+    runGit(repoPath, "add", "app.txt");
+    runGit(repoPath, "commit", "-m", "init");
+    runGit(repoPath, "checkout", "-b", "feat/test");
+    writeFileSync(join(repoPath, "app.txt"), "hello\nworld\n");
+
+    const createdAt = new Date(Date.now() - 20 * 60_000);
+    const session = makeSession({
+      status: "working",
+      branch: "feat/test",
+      workspacePath: repoPath,
+      createdAt,
+      lastActivityAt: new Date(Date.now() - 45_000),
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/test",
+        agent: "mock-agent",
+        createdAt: createdAt.toISOString(),
+      },
+    });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: repoPath,
+      branch: "feat/test",
+      status: "working",
+      project: "my-app",
+      agent: "mock-agent",
+      createdAt: createdAt.toISOString(),
+      runtimeHandle: JSON.stringify(session.runtimeHandle),
+    });
+
+    vi.mocked(mockRuntime.getOutput).mockResolvedValue(
+      "$ pnpm test\nError: boom\ncurl https://api.example.com\n",
+    );
+    mockAgent.getUsageSnapshot = vi.fn().mockResolvedValue({
+      provider: "codex",
+      capturedAt: new Date().toISOString(),
+      dials: [
+        {
+          id: "codex-budget",
+          label: "Budget",
+          kind: "percent_remaining",
+          status: "available",
+          value: 68,
+          maxValue: 100,
+          displayValue: "68%",
+          resetsAt: null,
+        },
+      ],
+    });
+    vi.mocked(mockSessionManager.list).mockResolvedValue([session]);
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    lm.start(60_000);
+
+    await vi.waitFor(() => {
+      expect(mockNotifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "progress-check" }),
+      );
+    });
+
+    lm.stop();
+
+    const event = vi.mocked(mockNotifier.notify).mock.calls[0]?.[0];
+    expect(event).toBeDefined();
+    expect(event?.projectId).toBe("my-app");
+    expect(event?.data).toEqual(
+      expect.objectContaining({
+        event: "progress-check",
+        session: "app-1",
+        project: "my-app",
+        agent: "mock-agent",
+      }),
+    );
+    expect(event?.data["timing"]).toEqual(
+      expect.objectContaining({
+        snapshot_number: 1,
+        budget_remaining_pct: 68,
+      }),
+    );
+    expect(event?.data["git"]).toEqual(
+      expect.objectContaining({
+        branch: "feat/test",
+        dirty_files: ["app.txt"],
+        has_pr: false,
+      }),
+    );
+    expect(event?.data["signals"]).toEqual(
+      expect.objectContaining({
+        idle: false,
+        error_patterns: ["Error:"],
+        test_commands_seen: ["pnpm test"],
+        live_commands_seen: ["curl"],
+        has_pushed: false,
+      }),
+    );
+    expect(event?.data["terminal"]).toEqual(
+      expect.objectContaining({
+        truncated: false,
+      }),
+    );
+    const terminal = event?.data["terminal"] as Record<string, unknown>;
+    expect(terminal["last_lines"]).toBe("$ pnpm test\nError: boom\ncurl https://api.example.com\n");
+
+    const metadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(metadata?.["progressSnapshotCount"]).toBe("1");
+    expect(metadata?.["lastProgressSnapshotAt"]).toBeDefined();
   });
 });
 

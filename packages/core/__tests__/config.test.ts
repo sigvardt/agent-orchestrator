@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadConfig, findConfigFile } from "../src/config.js";
+import { loadConfig, findConfigFile, validateConfig } from "../src/config.js";
 
 describe("Config Loading", () => {
   let testDir: string;
@@ -140,6 +140,45 @@ reactions:
       );
     });
 
+    it("parses progressChecks config and normalizes notify to an array", () => {
+      const configPath = join(testDir, "progress-config.yaml");
+      writeFileSync(
+        configPath,
+        `
+projects:
+  test-project:
+    repo: test/repo
+    path: ${testDir}
+    defaultBranch: main
+progressChecks:
+  enabled: true
+  intervalMinutes: 15
+  terminalLines: 80
+  notify: webhook
+  signals:
+    livePatterns:
+      - curl
+`,
+      );
+
+      const config = loadConfig(configPath);
+      expect(config.progressChecks).toEqual(
+        expect.objectContaining({
+          enabled: true,
+          intervalMinutes: 15,
+          terminalLines: 80,
+          notify: ["webhook"],
+        }),
+      );
+      expect(config.progressChecks.signals).toEqual(
+        expect.objectContaining({
+          livePatterns: ["curl"],
+        }),
+      );
+      expect(config.progressChecks.signals.errorPatterns).toContain("Error:");
+      expect(config.progressChecks.signals.testPatterns).toContain("pnpm test");
+    });
+
     it("should throw error if config not found", () => {
       expect(() => loadConfig()).toThrow("No agent-orchestrator.yaml found");
     });
@@ -170,6 +209,49 @@ reactions:
 
       const config = loadConfig();
       expect(config.port).toBe(3001); // Should use env, not local
+    });
+  });
+
+  describe("project progressChecks overrides", () => {
+    it("lets projects override signal patterns and notify targets", () => {
+      const config = validateConfig({
+        projects: {
+          "test-project": {
+            repo: "test/repo",
+            path: testDir,
+            defaultBranch: "main",
+            progressChecks: {
+              notify: ["webhook", "desktop"],
+              signals: {
+                livePatterns: ["curl"],
+                errorPatterns: ["ECONNRESET"],
+              },
+            },
+          },
+        },
+        progressChecks: {
+          enabled: true,
+          intervalMinutes: 10,
+          terminalLines: 50,
+          notify: ["desktop"],
+          signals: {
+            errorPatterns: ["Error:"],
+            testPatterns: ["pnpm test"],
+            livePatterns: [],
+          },
+        },
+      });
+
+      expect(config.projects["test-project"].progressChecks).toEqual(
+        expect.objectContaining({
+          notify: ["webhook", "desktop"],
+          signals: expect.objectContaining({
+            livePatterns: ["curl"],
+            errorPatterns: ["ECONNRESET"],
+          }),
+        }),
+      );
+      expect(config.progressChecks.enabled).toBe(true);
     });
   });
 });

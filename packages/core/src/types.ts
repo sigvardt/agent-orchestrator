@@ -428,6 +428,76 @@ export interface UsageSnapshot {
   dials: UsageDial[];
 }
 
+export interface ProgressCheckSignalsConfig {
+  errorPatterns: string[];
+  testPatterns: string[];
+  livePatterns: string[];
+}
+
+export interface ProgressChecksConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+  terminalLines: number;
+  notify?: string[];
+  signals: ProgressCheckSignalsConfig;
+}
+
+export interface ProgressCheckSignalsOverride {
+  errorPatterns?: string[];
+  testPatterns?: string[];
+  livePatterns?: string[];
+}
+
+export interface ProgressChecksProjectOverride {
+  enabled?: boolean;
+  intervalMinutes?: number;
+  terminalLines?: number;
+  notify?: string[];
+  signals?: ProgressCheckSignalsOverride;
+}
+
+export interface ProgressCheckTiming {
+  age_minutes: number;
+  budget_remaining_pct?: number;
+  last_output_seconds_ago: number;
+  snapshot_number: number;
+}
+
+export interface ProgressCheckGit {
+  branch: string | null;
+  commits_since_spawn: number;
+  last_commit_age_minutes: number | null;
+  dirty_files: string[];
+  has_pr: boolean;
+}
+
+export interface ProgressCheckSignals {
+  idle: boolean;
+  idle_seconds: number;
+  error_patterns: string[];
+  test_commands_seen: string[];
+  live_commands_seen: string[];
+  has_pushed: boolean;
+}
+
+export interface ProgressCheckTerminal {
+  last_lines: string;
+  truncated: boolean;
+}
+
+export interface ProgressCheckSnapshot {
+  event: "progress-check";
+  session: string;
+  project: string;
+  issue: string | null;
+  agent: string;
+  model: string | null;
+  timing: ProgressCheckTiming;
+  git: ProgressCheckGit;
+  signals: ProgressCheckSignals;
+  terminal: ProgressCheckTerminal;
+}
+
 // =============================================================================
 // WORKSPACE — Plugin Slot 3
 // =============================================================================
@@ -805,7 +875,9 @@ export type EventType =
   | "reaction.triggered"
   | "reaction.escalated"
   // Summary
-  | "summary.all_complete";
+  | "summary.all_complete"
+  // Progress snapshots
+  | "progress-check";
 
 /** An event emitted by the orchestrator */
 export interface OrchestratorEvent {
@@ -902,6 +974,9 @@ export interface OrchestratorConfig {
 
   /** Default reaction configs */
   reactions: Record<string, ReactionConfig>;
+
+  /** Periodic per-session progress snapshots */
+  progressChecks: ProgressChecksConfig;
 }
 
 export interface DefaultPlugins {
@@ -972,6 +1047,9 @@ export interface ProjectConfig {
     | "kill-previous";
 
   opencodeIssueSessionStrategy?: "reuse" | "delete" | "ignore";
+
+  /** Optional per-project overrides for periodic progress snapshots */
+  progressChecks?: ProgressChecksProjectOverride;
 }
 
 export interface TrackerConfig {
@@ -987,9 +1065,7 @@ export interface SCMConfig {
 }
 
 /** Resolve the configured merge method, defaulting to squash. */
-export function resolveMergeMethod(
-  config: { mergeMethod?: MergeMethod } | undefined,
-): MergeMethod {
+export function resolveMergeMethod(config: { mergeMethod?: MergeMethod } | undefined): MergeMethod {
   return config?.mergeMethod ?? "squash";
 }
 
@@ -1114,6 +1190,8 @@ export interface SessionMetadata {
   terminalWsPort?: number;
   directTerminalWsPort?: number;
   opencodeSessionId?: string;
+  lastProgressSnapshotAt?: string;
+  progressSnapshotCount?: string;
 }
 
 // =============================================================================

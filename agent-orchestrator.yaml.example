@@ -17,10 +17,21 @@ port: 3000
 
 # Default plugins (these are the defaults — you can omit this section)
 defaults:
-  runtime: tmux           # tmux | process | docker | kubernetes | ssh | e2b
-  agent: claude-code      # claude-code | codex | aider | goose | custom
-  workspace: worktree     # worktree | clone | copy
-  notifiers: [desktop]    # desktop | slack | discord | webhook | email
+  runtime: tmux # tmux | process | docker | kubernetes | ssh | e2b
+  agent: claude-code # claude-code | codex | aider | goose | custom
+  workspace: worktree # worktree | clone | copy
+  notifiers: [desktop] # desktop | slack | discord | webhook | email
+
+# Periodic progress snapshots for active sessions
+# progressChecks:
+#   enabled: true
+#   intervalMinutes: 10
+#   terminalLines: 50
+#   notify: webhook
+#   signals:
+#     errorPatterns: ["Error:", "FAIL", "TypeError", "ECONNREFUSED"]
+#     testPatterns: ["pnpm test", "pytest", "cargo test", "go test"]
+#     livePatterns: []
 
 # Projects — at minimum, specify repo and path
 projects:
@@ -80,6 +91,12 @@ projects:
     # reactions:
     #   approved-and-green:
     #     auto: true         # enable auto-merge for this project
+
+    # Per-project progress snapshot overrides
+    # progressChecks:
+    #   notify: [webhook, slack]
+    #   signals:
+    #     livePatterns: ["curl", "fetch"]
 
 # Notification channels
 # notifiers:

@@ -193,6 +193,16 @@ beforeEach(() => {
       info: [],
     },
     reactions: {},
+    progressChecks: {
+      enabled: false,
+      intervalMinutes: 10,
+      terminalLines: 50,
+      signals: {
+        errorPatterns: ["Error:", "FAIL", "TypeError", "ECONNREFUSED"],
+        testPatterns: ["npm test", "pnpm test", "pytest", "cargo test", "go test"],
+        livePatterns: [],
+      },
+    },
     readyThresholdMs: 300_000,
   };
 
