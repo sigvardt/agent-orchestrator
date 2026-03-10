@@ -1,7 +1,7 @@
 import { getServices } from "@/lib/services";
 import { sessionToDashboard } from "@/lib/serialize";
 import { getAttentionLevel } from "@/lib/types";
-import { matchesProject } from "@/lib/project-utils";
+import { filterWorkerSessions } from "@/lib/project-utils";
 import type { Session } from "@composio/ao-core";
 
 export const dynamic = "force-dynamic";
@@ -21,12 +21,7 @@ export async function GET(request: Request): Promise<Response> {
   const filterSessions = (
     sessions: Session[],
     config: { projects: Record<string, { sessionPrefix?: string }> },
-  ) => {
-    // Always exclude orchestrator sessions — they get their own button, not a card
-    const nonOrchestrators = sessions.filter((s) => !s.id.endsWith("-orchestrator"));
-    if (!projectFilter || projectFilter === "all") return nonOrchestrators;
-    return nonOrchestrators.filter((s) => matchesProject(s, projectFilter, config.projects));
-  };
+  ) => filterWorkerSessions(sessions, projectFilter, config.projects);
 
   const stream = new ReadableStream({
     start(controller) {

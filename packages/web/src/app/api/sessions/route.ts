@@ -9,7 +9,7 @@ import {
   computeStats,
 } from "@/lib/serialize";
 import { resolveGlobalPause } from "@/lib/global-pause";
-import { matchesProject } from "@/lib/project-utils";
+import { filterWorkerSessions, findOrchestratorSessionId } from "@/lib/project-utils";
 
 const METADATA_ENRICH_TIMEOUT_MS = 3_000;
 const PR_ENRICH_TIMEOUT_MS = 4_000;
@@ -44,29 +44,9 @@ export async function GET(request: Request) {
     const { config, registry, sessionManager } = await getServices();
     const coreSessions = await sessionManager.list();
 
-    // Find orchestrator session ID for the project (if running) and expose to clients
-    let orchestratorId: string | null = null;
-    if (projectFilter && projectFilter !== "all") {
-      // Find orchestrator for the specific project
-      const orchSession = coreSessions.find(
-        (s) => s.id.endsWith("-orchestrator") && matchesProject(s, projectFilter, config.projects),
-      );
-      orchestratorId = orchSession ? orchSession.id : null;
-    } else {
-      // No project filter: find first orchestrator (backward compatible)
-      const orchSession = coreSessions.find((s) => s.id.endsWith("-orchestrator"));
-      orchestratorId = orchSession ? orchSession.id : null;
-    }
+    const orchestratorId = findOrchestratorSessionId(coreSessions, projectFilter, config.projects);
 
-    // Filter out orchestrator sessions — they get their own button, not a card
-    let workerSessions = coreSessions.filter((s) => !s.id.endsWith("-orchestrator"));
-
-    // Apply project filter if specified
-    if (projectFilter && projectFilter !== "all") {
-      workerSessions = workerSessions.filter((s) =>
-        matchesProject(s, projectFilter, config.projects),
-      );
-    }
+    let workerSessions = filterWorkerSessions(coreSessions, projectFilter, config.projects);
 
     // Convert to dashboard format
     let dashboardSessions = workerSessions.map(sessionToDashboard);

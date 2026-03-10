@@ -13,7 +13,7 @@ import {
 } from "@/lib/serialize";
 import { prCache, prCacheKey } from "@/lib/cache";
 import { getPrimaryProjectId, getProjectName, getAllProjects } from "@/lib/project-name";
-import { matchesProject } from "@/lib/project-utils";
+import { filterWorkerSessions, findOrchestratorSessionId } from "@/lib/project-utils";
 import { resolveGlobalPause, type GlobalPauseState } from "@/lib/global-pause";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -33,27 +33,11 @@ export default async function Home(props: { searchParams: Promise<{ project?: st
     const { config, registry, sessionManager } = await getServices();
     const allSessions = await sessionManager.list();
 
-    if (projectFilter && projectFilter !== "all") {
-      const orchSession = allSessions.find(
-        (s) => s.id.endsWith("-orchestrator") && matchesProject(s, projectFilter, config.projects),
-      );
-      if (orchSession) {
-        orchestratorId = orchSession.id;
-      }
-    } else {
-      const orchSession = allSessions.find((s) => s.id.endsWith("-orchestrator"));
-      if (orchSession) {
-        orchestratorId = orchSession.id;
-      }
-    }
+    orchestratorId = findOrchestratorSessionId(allSessions, projectFilter, config.projects);
 
     globalPause = resolveGlobalPause(allSessions);
 
-    let coreSessions = allSessions.filter((s) => !s.id.endsWith("-orchestrator"));
-
-    if (projectFilter && projectFilter !== "all") {
-      coreSessions = coreSessions.filter((s) => matchesProject(s, projectFilter, config.projects));
-    }
+    const coreSessions = filterWorkerSessions(allSessions, projectFilter, config.projects);
 
     sessions = coreSessions.map(sessionToDashboard);
 
