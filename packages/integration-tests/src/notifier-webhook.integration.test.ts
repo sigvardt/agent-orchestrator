@@ -37,6 +37,7 @@ describe("notifier-webhook integration", () => {
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.type).toBe("notification");
       expect(body.event.id).toBe("evt-test-1");
+      expect(body.event.idempotencyKey).toBe("idem-evt-test-1");
       expect(body.event.type).toBe("ci.failing");
       expect(body.event.priority).toBe("action");
       expect(body.event.sessionId).toBe("app-1");

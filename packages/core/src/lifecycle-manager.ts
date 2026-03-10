@@ -10,7 +10,7 @@
  * Reference: scripts/claude-session-status, scripts/claude-review-check
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   SESSION_STATUS,
   PR_STATE,
@@ -80,6 +80,81 @@ function inferPriority(type: EventType): EventPriority {
   return "info";
 }
 
+const EVENT_IDEMPOTENCY_BUCKET_MS = 60_000;
+const RECENT_EVENT_TTL_MS = 120_000;
+
+interface EventIdempotencySeed {
+  transition: string;
+  oldStatus?: SessionStatus;
+  newStatus?: SessionStatus;
+  timestamp?: Date;
+}
+
+interface TransitionEventContext {
+  idempotencyKey: string;
+  transition: EventType;
+  oldStatus: SessionStatus;
+  newStatus: SessionStatus;
+  timestamp: Date;
+}
+
+function getIdempotencyBucket(timestamp: Date): number {
+  return Math.floor(timestamp.getTime() / EVENT_IDEMPOTENCY_BUCKET_MS);
+}
+
+function defaultIdempotencyTransition(
+  type: EventType,
+  data: Record<string, unknown>,
+): string {
+  if (Object.keys(data).length === 0) {
+    return type;
+  }
+
+  return `${type}:${JSON.stringify(data)}`;
+}
+
+function createIdempotencyKey(opts: {
+  sessionId: SessionId;
+  transition: string;
+  oldStatus?: SessionStatus;
+  newStatus?: SessionStatus;
+  timestamp: Date;
+}): string {
+  return createHash("sha256")
+    .update(
+      [
+        opts.sessionId,
+        opts.transition,
+        opts.oldStatus ?? "",
+        opts.newStatus ?? "",
+        String(getIdempotencyBucket(opts.timestamp)),
+      ].join(":"),
+    )
+    .digest("hex");
+}
+
+function createTransitionEventContext(
+  sessionId: SessionId,
+  transition: EventType,
+  oldStatus: SessionStatus,
+  newStatus: SessionStatus,
+  timestamp = new Date(),
+): TransitionEventContext {
+  return {
+    idempotencyKey: createIdempotencyKey({
+      sessionId,
+      transition,
+      oldStatus,
+      newStatus,
+      timestamp,
+    }),
+    transition,
+    oldStatus,
+    newStatus,
+    timestamp,
+  };
+}
+
 /** Create an OrchestratorEvent with defaults filled in. */
 function createEvent(
   type: EventType,
@@ -89,17 +164,34 @@ function createEvent(
     message: string;
     priority?: EventPriority;
     data?: Record<string, unknown>;
+    idempotencyKey?: string;
+    idempotencySeed?: EventIdempotencySeed;
+    timestamp?: Date;
   },
 ): OrchestratorEvent {
+  const data = opts.data ?? {};
+  const timestamp = opts.timestamp ?? opts.idempotencySeed?.timestamp ?? new Date();
+  const transition =
+    opts.idempotencySeed?.transition ?? defaultIdempotencyTransition(type, data);
+
   return {
     id: randomUUID(),
+    idempotencyKey:
+      opts.idempotencyKey ??
+      createIdempotencyKey({
+        sessionId: opts.sessionId,
+        transition,
+        oldStatus: opts.idempotencySeed?.oldStatus,
+        newStatus: opts.idempotencySeed?.newStatus,
+        timestamp,
+      }),
     type,
     priority: opts.priority ?? inferPriority(type),
     sessionId: opts.sessionId,
     projectId: opts.projectId,
-    timestamp: new Date(),
+    timestamp,
     message: opts.message,
-    data: opts.data ?? {},
+    data,
   };
 }
 
@@ -366,9 +458,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"
+  const recentEventIdempotencyKeys = new Map<string, number>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let polling = false; // re-entrancy guard
   let allCompleteEmitted = false; // guard against repeated all_complete
+
+  function pruneRecentEventIdempotencyKeys(nowMs = Date.now()): void {
+    for (const [key, expiresAtMs] of recentEventIdempotencyKeys.entries()) {
+      if (expiresAtMs <= nowMs) {
+        recentEventIdempotencyKeys.delete(key);
+      }
+    }
+  }
 
   function getOrCreateReactionTracker(sessionId: SessionId, reactionKey: string): ReactionTracker {
     const trackerKey = `${sessionId}:${reactionKey}`;
@@ -960,6 +1061,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     reactionConfig: ReactionConfig,
     pollStats?: LifecyclePollStats,
     session?: Session,
+    transitionContext?: TransitionEventContext,
   ): Promise<ReactionResult> {
     const tracker = getOrCreateReactionTracker(sessionId, reactionKey);
     const nowMs = Date.now();
@@ -997,6 +1099,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         projectId,
         message: `Reaction '${reactionKey}' escalated after ${tracker.attempts} attempts`,
         data: { reactionKey, attempts: tracker.attempts },
+        idempotencyKey: transitionContext?.idempotencyKey,
       });
       logLifecycle("info", "reaction.escalated", {
         pollId: pollStats?.pollId,
@@ -1074,6 +1177,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           projectId,
           message: `Reaction '${reactionKey}' triggered notification`,
           data: { reactionKey },
+          idempotencyKey: transitionContext?.idempotencyKey,
         });
         await notifyHuman(event, reactionConfig.priority ?? "info", pollStats);
         return {
@@ -1106,6 +1210,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             projectId,
             message: `Auto-merge could not run for reaction '${reactionKey}'. Manual intervention required.`,
             data: { reactionKey, mergeMethod },
+            idempotencyKey: transitionContext?.idempotencyKey,
           });
           await notifyHuman(event, "urgent", pollStats);
           return {
@@ -1142,6 +1247,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
               mergeMethod,
               error: message,
             },
+            idempotencyKey: transitionContext?.idempotencyKey,
           });
           await notifyHuman(event, "urgent", pollStats);
           return {
@@ -1172,6 +1278,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             prUrl: session.pr.url,
             mergeMethod,
           },
+          idempotencyKey: transitionContext?.idempotencyKey,
         });
         await notifyHuman(mergedEvent, inferPriority(mergedEvent.type), pollStats);
 
@@ -1202,6 +1309,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
               fallbackApplied: cleanup.fallbackApplied,
               error: cleanup.message,
             },
+            idempotencyKey: transitionContext?.idempotencyKey,
           });
           await notifyHuman(event, "urgent", pollStats);
           return {
@@ -1225,6 +1333,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             cleanupSteps: cleanup.steps,
             fallbackApplied: cleanup.fallbackApplied,
           },
+          idempotencyKey: transitionContext?.idempotencyKey,
         });
         await notifyHuman(completedEvent, inferPriority(completedEvent.type), pollStats);
         return {
@@ -1486,6 +1595,22 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       return;
     }
 
+    const nowMs = Date.now();
+    pruneRecentEventIdempotencyKeys(nowMs);
+    const existingTtl = recentEventIdempotencyKeys.get(event.idempotencyKey);
+    if (existingTtl !== undefined && existingTtl > nowMs) {
+      logLifecycle("info", "notification.deduplicated", {
+        pollId: pollStats?.pollId,
+        projectId: event.projectId,
+        sessionId: event.sessionId,
+        priority,
+        eventType: event.type,
+        idempotencyKey: event.idempotencyKey,
+      });
+      return;
+    }
+    recentEventIdempotencyKeys.set(event.idempotencyKey, nowMs + RECENT_EVENT_TTL_MS);
+
     for (const name of notifierNames) {
       const notifier = registry.get<Notifier>("notifier", name);
       if (!notifier) {
@@ -1516,6 +1641,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           notifier: name,
           priority,
           eventType: event.type,
+          idempotencyKey: event.idempotencyKey,
         });
       } catch (error) {
         incrementPollError(pollStats);
@@ -1529,6 +1655,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           notifier: name,
           priority,
           eventType: event.type,
+          idempotencyKey: event.idempotencyKey,
           error,
         });
       }
@@ -1583,6 +1710,12 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
       // Handle transition: notify humans and/or trigger reactions
       if (eventType) {
+        const transitionContext = createTransitionEventContext(
+          session.id,
+          eventType,
+          oldStatus,
+          newStatus,
+        );
         let reactionHandledNotify = false;
 
         if (reactionKey) {
@@ -1598,6 +1731,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 reactionConfig,
                 pollStats,
                 session,
+                transitionContext,
               );
               transitionReaction = { key: reactionKey, result: reactionResult };
 
@@ -1648,6 +1782,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             projectId: session.projectId,
             message: `${session.id}: ${oldStatus} → ${newStatus}`,
             data: { oldStatus, newStatus },
+            idempotencyKey: transitionContext.idempotencyKey,
+            timestamp: transitionContext.timestamp,
           });
           await notifyHuman(event, priority, pollStats);
         }
@@ -1680,6 +1816,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
     polling = true;
     const pollStats = createPollStats();
+    pruneRecentEventIdempotencyKeys();
 
     logLifecycle("info", "poll.start", {
       pollId: pollStats.pollId,

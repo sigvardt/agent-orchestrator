@@ -18,6 +18,7 @@ interface WebhookPayload {
   type: "notification" | "notification_with_actions" | "message";
   event?: {
     id: string;
+    idempotencyKey: string;
     type: string;
     priority: string;
     sessionId: string;
@@ -91,6 +92,7 @@ async function postWithRetry(
 function serializeEvent(event: OrchestratorEvent): WebhookPayload["event"] {
   return {
     id: event.id,
+    idempotencyKey: event.idempotencyKey,
     type: event.type,
     priority: event.priority,
     sessionId: event.sessionId,

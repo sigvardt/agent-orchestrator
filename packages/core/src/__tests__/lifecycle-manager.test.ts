@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createLifecycleManager } from "../lifecycle-manager.js";
 import { createSessionManager } from "../session-manager.js";
 import { deleteMetadata, writeMetadata, readMetadataRaw } from "../metadata.js";
@@ -81,6 +81,26 @@ function getLifecycleLogs(): Array<Record<string, unknown>> {
 
 function runGit(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+function computeEventIdempotencyKey(
+  sessionId: string,
+  transition: string,
+  oldStatus: string,
+  newStatus: string,
+  timestamp: Date,
+): string {
+  return createHash("sha256")
+    .update(
+      [
+        sessionId,
+        transition,
+        oldStatus,
+        newStatus,
+        String(Math.floor(timestamp.getTime() / 60_000)),
+      ].join(":"),
+    )
+    .digest("hex");
 }
 
 beforeEach(() => {
@@ -803,9 +823,123 @@ describe("check (single session)", () => {
     vi.setSystemTime(new Date("2026-03-09T11:01:01.000Z"));
     await lm.check("app-1");
 
+    const transitionTime = new Date("2026-03-09T11:01:01.000Z");
     expect(lm.getStates().get("app-1")).toBe("mergeable");
     expect(mockNotifier.notify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "merge.ready" }),
+      expect.objectContaining({
+        type: "merge.ready",
+        idempotencyKey: computeEventIdempotencyKey(
+          "app-1",
+          "merge.ready",
+          "stuck",
+          "mergeable",
+          transitionTime,
+        ),
+      }),
+    );
+  });
+
+  it("deduplicates repeated transition notifications within the TTL window", async () => {
+    vi.useFakeTimers();
+    const transitionTime = new Date("2026-03-09T13:00:00.000Z");
+    vi.setSystemTime(transitionTime);
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("merged"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn(),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn(),
+      getPendingComments: vi.fn(),
+      getAutomatedComments: vi.fn(),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    vi.mocked(mockSessionManager.list)
+      .mockResolvedValueOnce([
+        makeSession({
+          status: "approved",
+          pr: makePR(),
+          metadata: { status: "approved" },
+        }),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        makeSession({
+          status: "approved",
+          pr: makePR(),
+          metadata: { status: "approved" },
+        }),
+      ])
+      .mockResolvedValue([]);
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    lm.start(1_000);
+
+    await vi.waitFor(() => {
+      expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => {
+      expect(vi.mocked(mockSessionManager.list)).toHaveBeenCalledTimes(2);
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => {
+      expect(vi.mocked(mockSessionManager.list)).toHaveBeenCalledTimes(3);
+    });
+
+    lm.stop();
+
+    const expectedIdempotencyKey = computeEventIdempotencyKey(
+      "app-1",
+      "merge.completed",
+      "approved",
+      "merged",
+      transitionTime,
+    );
+
+    expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "merge.completed",
+        idempotencyKey: expectedIdempotencyKey,
+      }),
+    );
+    expect(getLifecycleLogs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "notification.deduplicated",
+          eventType: "merge.completed",
+          idempotencyKey: expectedIdempotencyKey,
+        }),
+      ]),
     );
   });
 
@@ -1391,6 +1525,10 @@ describe("reactions", () => {
   });
 
   it("auto-merges approved PRs with the default squash method", async () => {
+    vi.useFakeTimers();
+    const transitionTime = new Date("2026-03-09T12:00:00.000Z");
+    vi.setSystemTime(transitionTime);
+
     config.reactions = {
       "approved-and-green": {
         auto: true,
@@ -1486,12 +1624,39 @@ describe("reactions", () => {
       "app-1",
       expect.objectContaining({ onStep: expect.any(Function) }),
     );
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "merge.completed",
+        priority: "action",
+        idempotencyKey: computeEventIdempotencyKey(
+          "app-1",
+          "merge.ready",
+          "pr_open",
+          "mergeable",
+          transitionTime,
+        ),
+      }),
+    );
     expect(lm.getStates().has("app-1")).toBe(false);
     expect(readMetadataRaw(sessionsDir, "app-1")).toBeNull();
     expect(vi.mocked(mockNotifier.notify).mock.calls.map(([event]) => event.type)).toEqual([
       "merge.completed",
-      "session.completed",
     ]);
+    expect(getLifecycleLogs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "notification.deduplicated",
+          eventType: "session.completed",
+          idempotencyKey: computeEventIdempotencyKey(
+            "app-1",
+            "merge.ready",
+            "pr_open",
+            "mergeable",
+            transitionTime,
+          ),
+        }),
+      ]),
+    );
   });
 
   it("force-cleans the worktree and branch after merge when session kill reports cleanup failures", async () => {
@@ -1611,17 +1776,26 @@ describe("reactions", () => {
     expect(lm.getStates().has("app-1")).toBe(false);
     expect(vi.mocked(mockNotifier.notify).mock.calls.map(([event]) => event.type)).toEqual([
       "merge.completed",
-      "session.completed",
     ]);
-
-    const completedEvent = vi
-      .mocked(mockNotifier.notify)
-      .mock.calls.map(([event]) => event)
-      .find((event) => event.type === "session.completed");
-    expect(completedEvent?.data["fallbackApplied"]).toBe(true);
+    expect(getLifecycleLogs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "reaction.auto_merge.cleanup.completed",
+          fallbackApplied: true,
+        }),
+        expect.objectContaining({
+          event: "notification.deduplicated",
+          eventType: "session.completed",
+        }),
+      ]),
+    );
   });
 
   it("sends an urgent notification when auto-merge fails", async () => {
+    vi.useFakeTimers();
+    const transitionTime = new Date("2026-03-09T12:05:00.000Z");
+    vi.setSystemTime(transitionTime);
+
     config.reactions = {
       "approved-and-green": {
         auto: true,
@@ -1695,6 +1869,13 @@ describe("reactions", () => {
       expect.objectContaining({
         type: "reaction.triggered",
         priority: "urgent",
+        idempotencyKey: computeEventIdempotencyKey(
+          "app-1",
+          "merge.ready",
+          "pr_open",
+          "mergeable",
+          transitionTime,
+        ),
         message: expect.stringContaining("Auto-merge failed"),
       }),
     );

@@ -806,6 +806,7 @@ export type EventType =
 /** An event emitted by the orchestrator */
 export interface OrchestratorEvent {
   id: string;
+  idempotencyKey: string;
   type: EventType;
   priority: EventPriority;
   sessionId: SessionId;
