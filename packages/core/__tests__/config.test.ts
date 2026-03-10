@@ -142,6 +142,7 @@ reactions:
 
     it("parses progressChecks config and normalizes notify to an array", () => {
       const configPath = join(testDir, "progress-config.yaml");
+
       writeFileSync(
         configPath,
         `
@@ -177,6 +178,45 @@ progressChecks:
       );
       expect(config.progressChecks.signals.errorPatterns).toContain("Error:");
       expect(config.progressChecks.signals.testPatterns).toContain("pnpm test");
+    });
+
+    it("loads project verification config", () => {
+      const configPath = join(testDir, "verification-config.yaml");
+      writeFileSync(
+        configPath,
+        `
+projects:
+  test-project:
+    repo: test/repo
+    path: ${testDir}
+    defaultBranch: main
+    verification:
+      postPush:
+        command: npm run verify:live
+        timeout: 120
+        failAction: block-merge
+        artifacts:
+          - reports/verify-*.json
+      evidence:
+        required: true
+        patterns:
+          - docs/.verify-evidence-*
+`,
+      );
+
+      const config = loadConfig(configPath);
+      expect(config.projects["test-project"]?.verification).toEqual({
+        postPush: {
+          command: "npm run verify:live",
+          timeout: 120,
+          failAction: "block-merge",
+          artifacts: ["reports/verify-*.json"],
+        },
+        evidence: {
+          required: true,
+          patterns: ["docs/.verify-evidence-*"],
+        },
+      });
     });
 
     it("should throw error if config not found", () => {

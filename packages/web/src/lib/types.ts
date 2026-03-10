@@ -21,6 +21,7 @@ export type {
   UsageSnapshot,
 } from "@composio/ao-core/types";
 
+import { isVerificationBlocker } from "@composio/ao-core";
 import {
   ACTIVITY_STATE,
   SESSION_STATUS,
@@ -224,7 +225,9 @@ export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   // ── Merge: PR is ready — one click to clear ───────────────────────
   // Check this early: if the PR is mergeable, that's the most valuable
   // action for the human regardless of agent activity.
-  if (session.status === "mergeable" || session.status === "approved") {
+  const hasVerificationBlocker =
+    session.pr?.mergeability.blockers.some((blocker) => isVerificationBlocker(blocker)) ?? false;
+  if (!hasVerificationBlocker && (session.status === "mergeable" || session.status === "approved")) {
     return "merge";
   }
   if (session.pr?.mergeability.mergeable) {

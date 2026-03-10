@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import { isVerificationBlocker } from "@composio/ao-core";
 import {
   type DashboardSession,
   type DashboardPR,
@@ -718,6 +719,14 @@ function IssuesList({ pr }: { pr: DashboardPR }) {
 
   if (pr.state !== "merged" && !pr.mergeability.noConflicts) {
     issues.push({ icon: "✗", color: "var(--color-status-error)", text: "Merge conflicts" });
+  }
+
+  for (const blocker of pr.mergeability.blockers.filter((item) => isVerificationBlocker(item))) {
+    issues.push({
+      icon: "●",
+      color: "var(--color-status-attention)",
+      text: blocker.replace(/^Post-push verification:\s*/u, ""),
+    });
   }
 
   if (!pr.mergeability.mergeable && issues.length === 0) {

@@ -122,6 +122,15 @@ projects:
     scm:
       plugin: github
       mergeMethod: squash   # merge | squash | rebase
+    verification:
+      postPush:
+        command: npm run verify:live
+        timeout: 120
+        failAction: block-merge
+      evidence:
+        required: true
+        patterns:
+          - docs/.verify-evidence-*
 
 reactions:
   ci-failed:
@@ -138,6 +147,8 @@ reactions:
 ```
 
 CI fails → agent gets the logs and fixes it. Reviewer requests changes → agent addresses them. PR approved with green CI → you get a notification to merge.
+
+If a project needs live verification beyond CI, `verification.postPush` runs a project-defined command after each new pushed `HEAD`. `block-merge` prevents auto-merge and the dashboard merge action until that verification passes.
 
 See [`agent-orchestrator.yaml.example`](agent-orchestrator.yaml.example) for the full reference.
 

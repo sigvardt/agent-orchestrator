@@ -47,6 +47,15 @@ import {
 import { updateMetadata } from "./metadata.js";
 import { getSessionsDir } from "./paths.js";
 import { deleteLocalBranch, forceRemoveGitWorktree } from "./session-manager.js";
+import {
+  applyVerificationToMergeability,
+  evaluatePostPushVerification,
+  formatVerificationFailureMessage,
+  runPostPushVerification,
+  serializeVerificationResult,
+  type VerificationEvaluation,
+  type VerificationExecution,
+} from "./verification.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1341,6 +1350,92 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     );
   }
 
+  async function notifyVerificationFailure(
+    session: Session,
+    execution: VerificationExecution,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    const project = config.projects[session.projectId];
+    if (!project) return;
+
+    const message = `Post-push verification failed for ${session.id}`;
+    const event = createEvent("verification.failed", {
+      sessionId: session.id,
+      projectId: session.projectId,
+      message,
+      data: {
+        prNumber: session.pr?.number,
+        prUrl: session.pr?.url,
+        head: execution.result.head,
+        blockers: execution.result.blockers,
+        artifacts: execution.result.artifacts,
+        evidence: execution.result.evidence,
+        failAction: execution.result.failAction,
+      },
+    });
+    await notifyHuman(event, "warning", pollStats);
+  }
+
+  async function handleVerificationFailureAction(
+    session: Session,
+    execution: VerificationExecution,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    if (execution.result.status !== "failed") {
+      return;
+    }
+
+    const project = config.projects[session.projectId];
+    if (!project) {
+      return;
+    }
+
+    if (execution.result.failAction === "notify") {
+      await notifyVerificationFailure(session, execution, pollStats);
+      return;
+    }
+
+    if (execution.result.failAction !== "warn") {
+      return;
+    }
+
+    const scm = project.scm ? registry.get<SCM>("scm", project.scm.plugin) : null;
+    const commentBody = formatVerificationFailureMessage(project, execution);
+
+    if (!session.pr || !scm?.commentPR) {
+      incrementPollError(pollStats);
+      logLifecycle("error", "verification.warn.unavailable", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        hasPR: Boolean(session.pr),
+        hasCommentSupport: Boolean(scm?.commentPR),
+      });
+      await notifyVerificationFailure(session, execution, pollStats);
+      return;
+    }
+
+    try {
+      await scm.commentPR(session.pr, commentBody);
+      logLifecycle("info", "verification.warn.commented", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        prNumber: session.pr.number,
+      });
+    } catch (error) {
+      incrementPollError(pollStats);
+      logLifecycle("error", "verification.warn.comment_failed", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        prNumber: session.pr.number,
+        error,
+      });
+      await notifyVerificationFailure(session, execution, pollStats);
+    }
+  }
+
   /** Check if idle time exceeds the agent-stuck threshold. */
   function isIdleBeyondThreshold(session: Session, idleTimestamp: Date): boolean {
     const stuckReaction =
@@ -1354,7 +1449,11 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     return idleMs > stuckThresholdMs;
   }
 
-  async function evaluateOpenPR(session: Session, scm: SCM): Promise<OpenPREvaluation> {
+  async function evaluateOpenPR(
+    session: Session,
+    scm: SCM,
+    verificationEvaluation?: VerificationEvaluation | null,
+  ): Promise<OpenPREvaluation> {
     if (!session.pr) {
       return {
         status: SESSION_STATUS.WORKING,
@@ -1393,7 +1492,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
 
     if (reviewDecision === "approved" || reviewDecision === "none") {
-      const mergeReady = await scm.getMergeability(session.pr);
+      const mergeReady = applyVerificationToMergeability(
+        await scm.getMergeability(session.pr),
+        verificationEvaluation ?? null,
+      );
       if (mergeReady.mergeable) {
         return {
           status: SESSION_STATUS.MERGEABLE,
@@ -1584,7 +1686,45 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     // 4. Check PR state if PR exists
     if (session.pr && scm) {
+      let verificationEvaluation = await evaluatePostPushVerification(session, project);
+      try {
+        if (verificationEvaluation?.needsRun) {
+          const execution = await runPostPushVerification(session, project);
+          if (execution) {
+            updateSessionMetadata(session, serializeVerificationResult(execution.result));
+            logLifecycle("info", "verification.completed", {
+              pollId: pollStats?.pollId,
+              projectId: session.projectId,
+              sessionId: session.id,
+              prNumber: session.pr.number,
+              head: execution.result.head,
+              status: execution.result.status,
+              failAction: execution.result.failAction,
+              blockers: execution.result.blockers,
+              artifacts: execution.result.artifacts,
+              evidence: execution.result.evidence,
+            });
+
+            await handleVerificationFailureAction(session, execution, pollStats);
+            verificationEvaluation = await evaluatePostPushVerification(session, project);
+          }
+        }
+      } catch (error) {
+        incrementPollError(pollStats);
+        logLifecycle("error", "verification.run.failed", {
+          pollId: pollStats?.pollId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          prNumber: session.pr.number,
+          error,
+        });
+      }
+
       if (!isOpenPRStatusPollDue(session)) {
+        if (verificationEvaluation?.blockMerge && currentStatus === SESSION_STATUS.MERGEABLE) {
+          return SESSION_STATUS.APPROVED;
+        }
+
         if (
           detectedIdleTimestamp &&
           isIdleBeyondThreshold(session, detectedIdleTimestamp) &&
@@ -1597,7 +1737,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
 
       try {
-        const openPREvaluation = await evaluateOpenPR(session, scm);
+        const openPREvaluation = await evaluateOpenPR(session, scm, verificationEvaluation);
         updateSessionMetadata(session, {
           lastPrStatusPollAt: new Date().toISOString(),
           lastPrCiStatus: openPREvaluation.ciStatus,
@@ -2028,6 +2168,43 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             success: false,
             action: "auto-merge",
             message: "Auto-merge unavailable",
+            escalated: true,
+          };
+        }
+
+        const mergeability = applyVerificationToMergeability(
+          await scm.getMergeability(session.pr),
+          await evaluatePostPushVerification(session, project),
+        );
+        if (!mergeability.mergeable) {
+          logLifecycle("info", "reaction.auto_merge.blocked", {
+            pollId: pollStats?.pollId,
+            projectId,
+            sessionId,
+            reactionKey,
+            prNumber: session.pr.number,
+            mergeMethod,
+            blockers: mergeability.blockers,
+          });
+          const event = createEvent("reaction.triggered", {
+            sessionId,
+            projectId,
+            message: `Auto-merge skipped for PR #${session.pr.number}: ${mergeability.blockers.join("; ")}`,
+            data: {
+              reactionKey,
+              prNumber: session.pr.number,
+              prUrl: session.pr.url,
+              mergeMethod,
+              blockers: mergeability.blockers,
+            },
+            idempotencyKey: transitionContext?.idempotencyKey,
+          });
+          await notifyHuman(event, "warning", pollStats);
+          return {
+            reactionType: reactionKey,
+            success: false,
+            action: "auto-merge",
+            message: mergeability.blockers.join("; "),
             escalated: true,
           };
         }

@@ -51,6 +51,23 @@ export type { SessionManagerDeps } from "./session-manager.js";
 export { createLifecycleManager } from "./lifecycle-manager.js";
 export type { LifecycleManagerDeps } from "./lifecycle-manager.js";
 
+// Verification helpers — post-push verification execution and merge gating
+export {
+  DEFAULT_VERIFICATION_TIMEOUT_MS,
+  UNKNOWN_VERIFICATION_HEAD,
+  VERIFICATION_BLOCKER_PREFIX,
+  computeVerificationSignature,
+  readVerificationResult,
+  serializeVerificationResult,
+  getWorkspaceHead,
+  evaluatePostPushVerification,
+  applyVerificationToMergeability,
+  runPostPushVerification,
+  formatVerificationFailureMessage,
+  isVerificationBlocker,
+} from "./verification.js";
+export type { VerificationEvaluation, VerificationExecution } from "./verification.js";
+
 // Prompt builder — layered prompt composition
 export { buildPrompt, BASE_AGENT_PROMPT } from "./prompt-builder.js";
 export type { PromptBuildConfig } from "./prompt-builder.js";

@@ -5,15 +5,17 @@
  * (string dates, flattened DashboardPR) suitable for JSON serialization.
  */
 
-import type {
-  Session,
-  Agent,
-  SCM,
-  PRInfo,
-  Tracker,
-  ProjectConfig,
-  OrchestratorConfig,
-  PluginRegistry,
+import {
+  applyVerificationToMergeability,
+  evaluatePostPushVerification,
+  type Session,
+  type Agent,
+  type SCM,
+  type PRInfo,
+  type Tracker,
+  type ProjectConfig,
+  type OrchestratorConfig,
+  type PluginRegistry,
 } from "@composio/ao-core";
 import type { DashboardSession, DashboardPR, DashboardStats } from "./types.js";
 import { TTLCache, prCache, prCacheKey, type PREnrichmentData } from "./cache";
@@ -250,6 +252,22 @@ export async function enrichSessionPR(
   };
   prCache.set(cacheKey, cacheData);
   return true;
+}
+
+export async function applySessionVerificationGate(
+  core: Session,
+  dashboard: DashboardSession,
+  project: ProjectConfig | undefined,
+): Promise<void> {
+  if (!dashboard.pr || !project) {
+    return;
+  }
+
+  const evaluation = await evaluatePostPushVerification(core, project);
+  dashboard.pr.mergeability = applyVerificationToMergeability(
+    dashboard.pr.mergeability,
+    evaluation,
+  );
 }
 
 /** Enrich a DashboardSession's issue label using the tracker plugin. */

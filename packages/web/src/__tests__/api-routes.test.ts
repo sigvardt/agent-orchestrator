@@ -230,6 +230,7 @@ function makeRequest(url: string, init?: RequestInit): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   mockConfig.projects["my-app"]!.scm = { plugin: "github" };
+  delete mockConfig.projects["my-app"]!.verification;
   // Re-set default return values
   (mockSessionManager.list as ReturnType<typeof vi.fn>).mockResolvedValue(testSessions);
   (mockSessionManager.get as ReturnType<typeof vi.fn>).mockImplementation(
@@ -667,6 +668,24 @@ describe("API Routes", () => {
       const data = await res.json();
       expect(data.error).toMatch(/not mergeable/);
       expect(data.blockers).toBeDefined();
+    });
+
+    it("returns 422 when post-push verification blocks merge", async () => {
+      mockConfig.projects["my-app"]!.verification = {
+        postPush: {
+          command: "npm run verify:live",
+          failAction: "block-merge",
+        },
+      };
+
+      const req = makeRequest("/api/prs/432/merge", { method: "POST" });
+      const res = await mergePOST(req, { params: Promise.resolve({ id: "432" }) });
+
+      expect(res.status).toBe(422);
+      const data = await res.json();
+      expect(data.blockers).toContain(
+        "Post-push verification: Verification workspace is unavailable",
+      );
     });
 
     it("returns 400 for non-numeric PR id", async () => {

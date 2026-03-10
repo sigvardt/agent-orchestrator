@@ -654,6 +654,9 @@ export interface SCM {
   /** Close a PR without merging */
   closePR(pr: PRInfo): Promise<void>;
 
+  /** Add a comment to a PR/MR. Optional because some SCMs may not support it. */
+  commentPR?(pr: PRInfo, body: string): Promise<void>;
+
   // --- CI Tracking ---
 
   /** Get individual CI check statuses */
@@ -773,6 +776,41 @@ export interface MergeReadiness {
   blockers: string[];
 }
 
+// --- Verification Types ---
+
+export type VerificationFailAction = "block-merge" | "warn" | "notify";
+
+export type VerificationStatus = "passed" | "failed";
+
+export interface VerificationPostPushConfig {
+  command: string;
+  timeout?: number;
+  failAction?: VerificationFailAction;
+  artifacts?: string[];
+}
+
+export interface VerificationEvidenceConfig {
+  required?: boolean;
+  patterns?: string[];
+}
+
+export interface VerificationConfig {
+  postPush?: VerificationPostPushConfig;
+  evidence?: VerificationEvidenceConfig;
+}
+
+export interface VerificationResult {
+  head: string;
+  signature: string;
+  status: VerificationStatus;
+  failAction: VerificationFailAction;
+  checkedAt: string;
+  blockers: string[];
+  artifacts: string[];
+  evidence: string[];
+  exitCode?: number;
+}
+
 // =============================================================================
 // NOTIFIER — Plugin Slot 6 (PRIMARY INTERFACE)
 // =============================================================================
@@ -871,6 +909,8 @@ export type EventType =
   | "merge.ready"
   | "merge.conflicts"
   | "merge.completed"
+  // Verification
+  | "verification.failed"
   // Reactions
   | "reaction.triggered"
   | "reaction.escalated"
@@ -1022,6 +1062,9 @@ export interface ProjectConfig {
 
   /** Commands to run after workspace creation */
   postCreate?: string[];
+
+  /** Optional post-push verification for live/system checks. */
+  verification?: VerificationConfig;
 
   /** Agent-specific configuration */
   agentConfig?: AgentSpecificConfig;
@@ -1185,6 +1228,15 @@ export interface SessionMetadata {
   restoredAt?: string;
   waitingCiSince?: string;
   waitingCiTimedOutAt?: string;
+  verificationHead?: string;
+  verificationSignature?: string;
+  verificationStatus?: VerificationStatus;
+  verificationCheckedAt?: string;
+  verificationFailAction?: VerificationFailAction;
+  verificationBlockers?: string;
+  verificationArtifacts?: string;
+  verificationEvidence?: string;
+  verificationExitCode?: string;
   role?: string; // "orchestrator" for orchestrator sessions
   dashboardPort?: number;
   terminalWsPort?: number;

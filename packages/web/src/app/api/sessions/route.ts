@@ -5,6 +5,7 @@ import {
   sessionToDashboard,
   resolveProject,
   enrichSessionPR,
+  applySessionVerificationGate,
   enrichSessionsMetadata,
   computeStats,
 } from "@/lib/serialize";
@@ -68,7 +69,8 @@ export async function GET(request: Request) {
       const prDeadlineAt = Date.now() + PR_ENRICH_TIMEOUT_MS;
       for (let i = 0; i < workerSessions.length; i++) {
         const core = workerSessions[i];
-        if (!core?.pr) continue;
+        const pr = core?.pr;
+        if (!pr) continue;
 
         const remainingMs = prDeadlineAt - Date.now();
         if (remainingMs <= 0) break;
@@ -78,7 +80,10 @@ export async function GET(request: Request) {
         if (!scm) continue;
 
         await settlesWithin(
-          enrichSessionPR(dashboardSessions[i], scm, core.pr),
+          (async () => {
+            await enrichSessionPR(dashboardSessions[i], scm, pr);
+            await applySessionVerificationGate(core, dashboardSessions[i], project);
+          })(),
           Math.min(remainingMs, PER_PR_ENRICH_TIMEOUT_MS),
         );
       }
