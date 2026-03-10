@@ -1776,6 +1776,83 @@ describe("reactions", () => {
     expect(mockNotifier.notify).not.toHaveBeenCalled();
   });
 
+  it("falls back to human notification when send-to-agent fails", async () => {
+    config.notificationRouting.warning = ["desktop"];
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("failing"),
+      getCIFailureLogs: vi.fn().mockResolvedValue("FAIL src/example.test.ts"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn(),
+      getPendingComments: vi.fn(),
+      getAutomatedComments: vi.fn(),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const session = makeSession({ status: "pr_open", pr: makePR() });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+    vi.mocked(mockSessionManager.send).mockRejectedValue(new Error("send failed"));
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "pr_open",
+      project: "my-app",
+    });
+
+    const configWithReaction = {
+      ...config,
+      reactions: {
+        "ci-failed": {
+          auto: true,
+          action: "send-to-agent" as const,
+          retries: 3,
+          escalateAfter: 3,
+        },
+      },
+    };
+
+    const lm = createLifecycleManager({
+      config: configWithReaction,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("ci_failed");
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-1",
+      "CI failed on your PR. Here are the failure logs:\n\nFAIL src/example.test.ts\n\nPlease fix the failing test(s) and push.",
+    );
+    expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "ci.failing" }),
+    );
+  });
+
   it("dispatches unresolved review comments even when reviewDecision stays unchanged", async () => {
     config.reactions = {
       "changes-requested": {

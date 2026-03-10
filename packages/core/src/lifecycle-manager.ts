@@ -1629,11 +1629,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 updateSessionMetadata(session, { status: finalStatus });
               }
 
-              // Reaction is handling this event — suppress immediate human notification.
-              // "send-to-agent" retries + escalates on its own; "notify"/"auto-merge"
-              // already call notifyHuman internally. Notifying here would bypass the
-              // delayed escalation behaviour configured via retries/escalateAfter.
-              reactionHandledNotify = true;
+              // Only suppress the transition notification if the reaction actually
+              // handled the event or escalated it to humans. Failed send-to-agent
+              // attempts should fall back to the normal human notification path.
+              reactionHandledNotify = reactionResult.success || reactionResult.escalated;
             }
           }
         }
