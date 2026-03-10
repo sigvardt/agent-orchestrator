@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { isVerificationBlocker } from "@composio/ao-core";
 import {
   type DashboardSession,
   type DashboardPR,
   type SessionUsageResponse,
   isPRMergeReady,
+  isVerificationBlocker,
 } from "@/lib/types";
 import { CI_STATUS } from "@composio/ao-core/types";
 import { cn } from "@/lib/cn";

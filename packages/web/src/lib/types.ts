@@ -21,7 +21,6 @@ export type {
   UsageSnapshot,
 } from "@composio/ao-core/types";
 
-import { isVerificationBlocker } from "@composio/ao-core";
 import {
   ACTIVITY_STATE,
   SESSION_STATUS,
@@ -43,6 +42,8 @@ import {
 
 // Re-export for use in client components
 export { TERMINAL_STATUSES, TERMINAL_ACTIVITIES, NON_RESTORABLE_STATUSES };
+
+const VERIFICATION_BLOCKER_PREFIX = "Post-push verification:";
 
 /**
  * Attention zone priority level, ordered by human action urgency:
@@ -187,6 +188,11 @@ export interface SSEActivityEvent {
  */
 export function isPRRateLimited(pr: DashboardPR): boolean {
   return pr.mergeability.blockers.includes("API rate limited or unavailable");
+}
+
+/** Returns true when a merge blocker came from post-push verification. */
+export function isVerificationBlocker(blocker: string): boolean {
+  return blocker.startsWith(VERIFICATION_BLOCKER_PREFIX);
 }
 
 /**
