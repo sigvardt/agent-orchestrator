@@ -28,7 +28,6 @@ import {
   type SessionId,
   type SessionSpawnConfig,
   type OrchestratorSpawnConfig,
-  type SessionStatus,
   type CleanupResult,
   type ClaimPROptions,
   type ClaimPRResult,
@@ -73,6 +72,8 @@ import {
   GLOBAL_PAUSE_SOURCE_KEY,
   parsePauseUntil,
 } from "./global-pause.js";
+import { sessionFromMetadata } from "./utils/session-from-metadata.js";
+import { safeJsonParse, validateStatus } from "./utils/validation.js";
 
 const execFileAsync = promisify(execFile);
 const OPENCODE_DISCOVERY_TIMEOUT_MS = 2_000;
@@ -494,37 +495,6 @@ function getNextSessionNumber(existingSessions: string[], prefix: string): numbe
   return max + 1;
 }
 
-/** Safely parse JSON, returning null on failure. */
-function safeJsonParse<T>(str: string): T | null {
-  try {
-    return JSON.parse(str) as T;
-  } catch {
-    return null;
-  }
-}
-
-/** Valid session statuses for validation. */
-const VALID_STATUSES: ReadonlySet<string> = new Set([
-  "spawning",
-  "working",
-  "completed",
-  "pr_open",
-  "waiting_ci",
-  "ci_failed",
-  "review_pending",
-  "changes_requested",
-  "approved",
-  "mergeable",
-  "merged",
-  "cleanup",
-  "needs_input",
-  "stuck",
-  "errored",
-  "killed",
-  "done",
-  "terminated",
-]);
-
 const PR_TRACKING_STATUSES: ReadonlySet<string> = new Set([
   "pr_open",
   "waiting_ci",
@@ -545,14 +515,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Validate and normalize a status string. */
-function validateStatus(raw: string | undefined): SessionStatus {
-  // Bash scripts write "starting" — treat as "working"
-  if (raw === "starting") return "working";
-  if (raw && VALID_STATUSES.has(raw)) return raw as SessionStatus;
-  return "spawning";
-}
-
 /** Reconstruct a Session object from raw metadata key=value pairs. */
 function metadataToSession(
   sessionId: SessionId,
@@ -560,42 +522,10 @@ function metadataToSession(
   createdAt?: Date,
   modifiedAt?: Date,
 ): Session {
-  return {
-    id: sessionId,
-    projectId: meta["project"] ?? "",
-    status: validateStatus(meta["status"]),
-    activity: null,
-    branch: meta["branch"] || null,
-    issueId: meta["issue"] || null,
-    pr: meta["pr"]
-      ? (() => {
-          // Parse owner/repo from GitHub PR URL: https://github.com/owner/repo/pull/123
-          const prUrl = meta["pr"];
-          const ghMatch = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-          return {
-            number: ghMatch
-              ? parseInt(ghMatch[3], 10)
-              : parseInt(prUrl.match(/\/(\d+)$/)?.[1] ?? "0", 10),
-            url: prUrl,
-            title: "",
-            owner: ghMatch?.[1] ?? "",
-            repo: ghMatch?.[2] ?? "",
-            branch: meta["branch"] ?? "",
-            baseBranch: "",
-            isDraft: false,
-          };
-        })()
-      : null,
-    workspacePath: meta["worktree"] || null,
-    runtimeHandle: meta["runtimeHandle"]
-      ? safeJsonParse<RuntimeHandle>(meta["runtimeHandle"])
-      : null,
-    agentInfo: meta["summary"] ? { summary: meta["summary"], agentSessionId: null } : null,
-    createdAt: meta["createdAt"] ? new Date(meta["createdAt"]) : (createdAt ?? new Date()),
+  return sessionFromMetadata(sessionId, meta, {
+    createdAt,
     lastActivityAt: modifiedAt ?? new Date(),
-    restoredAt: meta["restoredAt"] ? new Date(meta["restoredAt"]) : undefined,
-    metadata: meta,
-  };
+  });
 }
 
 export interface SessionManagerDeps {
