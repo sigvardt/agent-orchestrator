@@ -810,6 +810,7 @@ export interface ReactionResult {
   action: string;
   message?: string;
   escalated: boolean;
+  resultingStatus?: SessionStatus;
 }
 
 // =============================================================================
@@ -931,7 +932,15 @@ export interface TrackerConfig {
 
 export interface SCMConfig {
   plugin: string;
+  mergeMethod?: MergeMethod;
   [key: string]: unknown;
+}
+
+/** Resolve the configured merge method, defaulting to squash. */
+export function resolveMergeMethod(
+  config: { mergeMethod?: MergeMethod } | undefined,
+): MergeMethod {
+  return config?.mergeMethod ?? "squash";
 }
 
 export interface NotifierConfig {

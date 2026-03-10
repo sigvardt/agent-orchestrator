@@ -42,6 +42,7 @@ const TrackerConfigSchema = z
 const SCMConfigSchema = z
   .object({
     plugin: z.string(),
+    mergeMethod: z.enum(["merge", "squash", "rebase"]).optional(),
   })
   .passthrough();
 

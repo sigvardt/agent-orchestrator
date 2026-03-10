@@ -67,6 +67,11 @@ projects:
     # OpenCode issue session strategy (only for agent: opencode)
     # opencodeIssueSessionStrategy: reuse   # reuse | delete | ignore
 
+    # SCM settings
+    # scm:
+    #   plugin: github
+    #   mergeMethod: squash   # merge | squash | rebase
+
     # OpenCode orchestrator session strategy (only for agent: opencode)
     # Controls how the orchestrator's OpenCode session is managed
     # orchestratorSessionStrategy: reuse    # reuse | delete | ignore
@@ -104,8 +109,8 @@ projects:
 #     escalateAfter: 30m
 #
 #   approved-and-green:
-#     auto: false              # set to true for auto-merge
-#     action: notify
+#     auto: false
+#     action: notify           # set to auto-merge for automatic merging
 #     priority: action
 #
 #   agent-stuck:
