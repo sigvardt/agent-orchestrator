@@ -729,6 +729,7 @@ export type EventType =
   | "session.working"
   | "session.exited"
   | "session.killed"
+  | "session.completed"
   | "session.stuck"
   | "session.needs_input"
   | "session.errored"
@@ -810,6 +811,8 @@ export interface ReactionResult {
   action: string;
   message?: string;
   escalated: boolean;
+  sessionCompleted?: boolean;
+  statusOverride?: SessionStatus;
 }
 
 // =============================================================================

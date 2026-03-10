@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createLifecycleManager } from "../lifecycle-manager.js";
 import { createSessionManager } from "../session-manager.js";
-import { writeMetadata, readMetadataRaw } from "../metadata.js";
-import { getSessionsDir, getProjectBaseDir } from "../paths.js";
+import { deleteMetadata, writeMetadata, readMetadataRaw } from "../metadata.js";
+import { getSessionsDir, getProjectBaseDir, getWorktreesDir } from "../paths.js";
 import type {
   OrchestratorConfig,
   PluginRegistry,
@@ -62,6 +63,35 @@ function makePR(overrides: Partial<PRInfo> = {}): PRInfo {
     isDraft: false,
     ...overrides,
   };
+}
+
+function runGit(cwd: string, ...args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+function createManagedWorktree(sessionId = "app-1", branch = "feat/test"): {
+  repoPath: string;
+  worktreePath: string;
+} {
+  const repoPath = config.projects["my-app"]?.path;
+  if (!repoPath) {
+    throw new Error("missing repo path");
+  }
+
+  mkdirSync(repoPath, { recursive: true });
+  runGit(repoPath, "init", "-b", "main");
+  runGit(repoPath, "config", "user.email", "ao@example.com");
+  runGit(repoPath, "config", "user.name", "AO Test");
+  writeFileSync(join(repoPath, "README.md"), "hello\n", "utf-8");
+  runGit(repoPath, "add", "README.md");
+  runGit(repoPath, "commit", "-m", "init");
+
+  const worktreeDir = getWorktreesDir(configPath, repoPath);
+  mkdirSync(worktreeDir, { recursive: true });
+  const worktreePath = join(worktreeDir, sessionId);
+  runGit(repoPath, "worktree", "add", "-b", branch, worktreePath, "HEAD");
+
+  return { repoPath, worktreePath };
 }
 
 function getLifecycleLogs(): Array<Record<string, unknown>> {
@@ -1222,6 +1252,289 @@ describe("reactions", () => {
 
     const metadata = readMetadataRaw(sessionsDir, "app-1");
     expect(metadata?.["lastAutomatedReviewDispatchHash"]).toBe("bot-1");
+  });
+
+  it("auto-merges, cleans the session, and emits session.completed after cleanup", async () => {
+    config.reactions = {
+      "approved-and-green": {
+        auto: true,
+        action: "auto-merge",
+      },
+    };
+    config.projects["my-app"] = {
+      ...config.projects["my-app"]!,
+      workspace: "worktree",
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mergeability = {
+      mergeable: true,
+      ciPassing: true,
+      approved: true,
+      noConflicts: true,
+      blockers: [],
+    };
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn().mockResolvedValue(undefined),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("approved"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn().mockResolvedValue(mergeability),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const { repoPath, worktreePath } = createManagedWorktree("app-1", "feat/test");
+    const session = makeSession({
+      status: "pr_open",
+      branch: "feat/test",
+      workspacePath: worktreePath,
+      pr: makePR({ branch: "feat/test" }),
+    });
+
+    let getCount = 0;
+    vi.mocked(mockSessionManager.get).mockImplementation(async () => {
+      getCount += 1;
+      return getCount >= 3 ? null : session;
+    });
+    vi.mocked(mockSessionManager.kill).mockImplementation(async () => {
+      runGit(repoPath, "worktree", "remove", "--force", worktreePath);
+      runGit(repoPath, "branch", "-D", "feat/test");
+      deleteMetadata(sessionsDir, "app-1", true);
+    });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: worktreePath,
+      branch: "feat/test",
+      status: "pr_open",
+      project: "my-app",
+      pr: session.pr?.url,
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockSCM.mergePR).toHaveBeenCalledWith(session.pr);
+    expect(existsSync(worktreePath)).toBe(false);
+    expect(runGit(repoPath, "branch", "--list", "feat/test")).toBe("");
+    expect(readMetadataRaw(sessionsDir, "app-1")).toBeNull();
+    expect(lm.getStates().get("app-1")).toBeUndefined();
+
+    const notifiedTypes = vi
+      .mocked(mockNotifier.notify)
+      .mock.calls.map(([event]) => event.type);
+    expect(notifiedTypes).toEqual(["merge.completed", "session.completed"]);
+  });
+
+  it("emits session.completed after fallback cleanup when session kill reports a recoverable error", async () => {
+    config.reactions = {
+      "approved-and-green": {
+        auto: true,
+        action: "auto-merge",
+      },
+    };
+    config.projects["my-app"] = {
+      ...config.projects["my-app"]!,
+      workspace: "worktree",
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mergeability = {
+      mergeable: true,
+      ciPassing: true,
+      approved: true,
+      noConflicts: true,
+      blockers: [],
+    };
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn().mockResolvedValue(undefined),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("approved"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn().mockResolvedValue(mergeability),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const { repoPath, worktreePath } = createManagedWorktree("app-1", "feat/test");
+    const session = makeSession({
+      status: "pr_open",
+      branch: "feat/test",
+      workspacePath: worktreePath,
+      pr: makePR({ branch: "feat/test" }),
+    });
+
+    let getCount = 0;
+    vi.mocked(mockSessionManager.get).mockImplementation(async () => {
+      getCount += 1;
+      return getCount >= 3 ? null : session;
+    });
+    vi.mocked(mockSessionManager.kill).mockImplementation(async () => {
+      deleteMetadata(sessionsDir, "app-1", true);
+      throw new Error("runtime cleanup failed");
+    });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: worktreePath,
+      branch: "feat/test",
+      status: "pr_open",
+      project: "my-app",
+      pr: session.pr?.url,
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockSCM.mergePR).toHaveBeenCalledWith(session.pr);
+    expect(existsSync(worktreePath)).toBe(false);
+    expect(runGit(repoPath, "branch", "--list", "feat/test")).toBe("");
+    expect(readMetadataRaw(sessionsDir, "app-1")).toBeNull();
+    expect(lm.getStates().get("app-1")).toBeUndefined();
+
+    const notifiedTypes = vi
+      .mocked(mockNotifier.notify)
+      .mock.calls.map(([event]) => event.type);
+    expect(notifiedTypes).toEqual(["merge.completed", "session.completed"]);
+  });
+
+  it("escalates when auto-merge succeeds but the session is still not fully cleaned", async () => {
+    config.reactions = {
+      "approved-and-green": {
+        auto: true,
+        action: "auto-merge",
+      },
+    };
+    config.projects["my-app"] = {
+      ...config.projects["my-app"]!,
+      workspace: "worktree",
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mergeability = {
+      mergeable: true,
+      ciPassing: true,
+      approved: true,
+      noConflicts: true,
+      blockers: [],
+    };
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn().mockResolvedValue(undefined),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("approved"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn().mockResolvedValue(mergeability),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const { repoPath, worktreePath } = createManagedWorktree("app-1", "feat/test");
+    const session = makeSession({
+      status: "pr_open",
+      branch: "feat/test",
+      workspacePath: worktreePath,
+      pr: makePR({ branch: "feat/test" }),
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+    vi.mocked(mockSessionManager.kill).mockImplementation(async () => {
+      throw new Error("runtime cleanup failed");
+    });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: worktreePath,
+      branch: "feat/test",
+      status: "pr_open",
+      project: "my-app",
+      pr: session.pr?.url,
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(existsSync(worktreePath)).toBe(false);
+    expect(runGit(repoPath, "branch", "--list", "feat/test")).toBe("");
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["status"]).toBe("merged");
+    expect(lm.getStates().get("app-1")).toBe("merged");
+
+    const notifiedTypes = vi
+      .mocked(mockNotifier.notify)
+      .mock.calls.map(([event]) => event.type);
+    expect(notifiedTypes).toEqual(["merge.completed", "reaction.escalated"]);
   });
 
   it("notifies humans on significant transitions without reaction config", async () => {

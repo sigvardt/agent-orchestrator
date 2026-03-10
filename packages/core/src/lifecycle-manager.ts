@@ -35,6 +35,11 @@ import {
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
 import { getSessionsDir } from "./paths.js";
+import {
+  deleteLocalBranch,
+  forceRemoveGitWorktree,
+  verifyGitSessionCleanup,
+} from "./session-cleanup.js";
 
 /** Parse a duration string like "10m", "30s", "1h" to milliseconds. */
 function parseDuration(str: string): number {
@@ -245,6 +250,10 @@ function incrementPollError(pollStats?: LifecyclePollStats): void {
   if (pollStats) {
     pollStats.errors += 1;
   }
+}
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function createPollStats(): LifecyclePollStats {
@@ -600,21 +609,189 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
 
       case "auto-merge": {
-        // Auto-merge is handled by the SCM plugin
-        // For now, just notify
-        const event = createEvent("reaction.triggered", {
-          sessionId,
-          projectId,
-          message: `Reaction '${reactionKey}' triggered auto-merge`,
-          data: { reactionKey },
-        });
-        await notifyHuman(event, "action", pollStats);
-        return {
-          reactionType: reactionKey,
-          success: true,
-          action: "auto-merge",
-          escalated: false,
-        };
+        const session = await sessionManager.get(sessionId);
+        const project = config.projects[projectId];
+        const scm = project?.scm ? registry.get<SCM>("scm", project.scm.plugin) : null;
+
+        if (!session || !project || !session.pr || !scm) {
+          const message = !session
+            ? `Auto-merge could not load session ${sessionId}`
+            : !project
+              ? `Auto-merge could not load project ${projectId}`
+              : !session.pr
+                ? `Auto-merge could not find a PR for session ${sessionId}`
+                : `Auto-merge could not load SCM plugin for project ${projectId}`;
+          await notifyReactionFailure(
+            sessionId,
+            projectId,
+            reactionKey,
+            reactionConfig.priority ?? "urgent",
+            message,
+            { reason: "missing_merge_context" },
+            pollStats,
+          );
+          return {
+            reactionType: reactionKey,
+            success: false,
+            action: "auto-merge",
+            escalated: true,
+          };
+        }
+
+        try {
+          const prState = await scm.getPRState(session.pr);
+          const alreadyMerged = prState === PR_STATE.MERGED;
+
+          if (!alreadyMerged) {
+            if (prState !== PR_STATE.OPEN) {
+              const message = `Auto-merge aborted because PR #${session.pr.number} is ${prState}`;
+              await notifyReactionFailure(
+                sessionId,
+                projectId,
+                reactionKey,
+                reactionConfig.priority ?? "urgent",
+                message,
+                { pr: session.pr, prState },
+                pollStats,
+              );
+              return {
+                reactionType: reactionKey,
+                success: false,
+                action: "auto-merge",
+                escalated: true,
+              };
+            }
+
+            const mergeability = await scm.getMergeability(session.pr);
+            if (!mergeability.mergeable) {
+              const message = `Auto-merge aborted because PR #${session.pr.number} is no longer mergeable`;
+              await notifyReactionFailure(
+                sessionId,
+                projectId,
+                reactionKey,
+                reactionConfig.priority ?? "urgent",
+                message,
+                { pr: session.pr, blockers: mergeability.blockers },
+                pollStats,
+              );
+              return {
+                reactionType: reactionKey,
+                success: false,
+                action: "auto-merge",
+                escalated: true,
+              };
+            }
+
+            await scm.mergePR(session.pr);
+            logLifecycle("info", "reaction.auto_merge.merged", {
+              pollId: pollStats?.pollId,
+              projectId,
+              sessionId,
+              reactionKey,
+              prNumber: session.pr.number,
+              prUrl: session.pr.url,
+            });
+          } else {
+            logLifecycle("info", "reaction.auto_merge.already_merged", {
+              pollId: pollStats?.pollId,
+              projectId,
+              sessionId,
+              reactionKey,
+              prNumber: session.pr.number,
+              prUrl: session.pr.url,
+            });
+          }
+
+          await emitLifecycleEvent(
+            "merge.completed",
+            {
+              sessionId,
+              projectId,
+              message: `PR #${session.pr.number} merged for ${sessionId}`,
+              data: {
+                reactionKey,
+                pr: session.pr,
+                autoMerge: true,
+                alreadyMerged,
+              },
+            },
+            pollStats,
+          );
+
+          const cleanupResult = await cleanupMergedSession(session, pollStats);
+          if (!cleanupResult.completed) {
+            const message = `Auto-merge cleaned PR #${session.pr.number} but session ${sessionId} is not fully cleaned`;
+            await notifyReactionFailure(
+              sessionId,
+              projectId,
+              reactionKey,
+              reactionConfig.priority ?? "urgent",
+              message,
+              {
+                pr: session.pr,
+                autoMerge: true,
+                cleanupFailures: cleanupResult.failures,
+              },
+              pollStats,
+            );
+            return {
+              reactionType: reactionKey,
+              success: false,
+              action: "auto-merge",
+              escalated: true,
+              statusOverride: "merged",
+            };
+          }
+
+          await emitLifecycleEvent(
+            "session.completed",
+            {
+              sessionId,
+              projectId,
+              message: `Session ${sessionId} cleanup completed after auto-merge`,
+              data: {
+                reactionKey,
+                pr: session.pr,
+                autoMerge: true,
+                cleanupRecovered: cleanupResult.recovered,
+              },
+            },
+            pollStats,
+          );
+
+          return {
+            reactionType: reactionKey,
+            success: true,
+            action: "auto-merge",
+            escalated: false,
+            sessionCompleted: true,
+            statusOverride: "merged",
+          };
+        } catch (error) {
+          incrementPollError(pollStats);
+          logLifecycle("error", "reaction.auto_merge.failed", {
+            pollId: pollStats?.pollId,
+            projectId,
+            sessionId,
+            reactionKey,
+            error,
+          });
+          await notifyReactionFailure(
+            sessionId,
+            projectId,
+            reactionKey,
+            reactionConfig.priority ?? "urgent",
+            `Auto-merge failed for session ${sessionId}: ${formatError(error)}`,
+            { error: formatError(error) },
+            pollStats,
+          );
+          return {
+            reactionType: reactionKey,
+            success: false,
+            action: "auto-merge",
+            escalated: true,
+          };
+        }
       }
     }
 
@@ -628,6 +805,14 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
   function clearReactionTracker(sessionId: SessionId, reactionKey: string): void {
     reactionTrackers.delete(`${sessionId}:${reactionKey}`);
+  }
+
+  function clearAllReactionTrackers(sessionId: SessionId): void {
+    for (const trackerKey of [...reactionTrackers.keys()]) {
+      if (trackerKey.startsWith(`${sessionId}:`)) {
+        reactionTrackers.delete(trackerKey);
+      }
+    }
   }
 
   function getReactionConfigForSession(
@@ -661,6 +846,189 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       cleaned[key] = value;
     }
     session.metadata = cleaned;
+  }
+
+  async function emitLifecycleEvent(
+    type: EventType,
+    opts: {
+      sessionId: SessionId;
+      projectId: string;
+      message: string;
+      data?: Record<string, unknown>;
+      priority?: EventPriority;
+    },
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    const event = createEvent(type, opts);
+    await notifyHuman(event, opts.priority ?? inferPriority(type), pollStats);
+  }
+
+  async function notifyReactionFailure(
+    sessionId: SessionId,
+    projectId: string,
+    reactionKey: string,
+    priority: EventPriority,
+    message: string,
+    data: Record<string, unknown>,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    logLifecycle("error", "reaction.auto_merge.escalated", {
+      pollId: pollStats?.pollId,
+      projectId,
+      sessionId,
+      reactionKey,
+      message,
+      ...data,
+    });
+    await emitLifecycleEvent(
+      "reaction.escalated",
+      {
+        sessionId,
+        projectId,
+        message,
+        priority,
+        data: { reactionKey, ...data },
+      },
+      pollStats,
+    );
+  }
+
+  async function cleanupMergedSession(
+    session: Session,
+    pollStats?: LifecyclePollStats,
+  ): Promise<{ completed: boolean; recovered: boolean; failures: string[] }> {
+    const project = config.projects[session.projectId];
+    if (!project) {
+      return {
+        completed: false,
+        recovered: false,
+        failures: [`project ${session.projectId} is not configured`],
+      };
+    }
+
+    const usesGitWorktreeCleanup = (project.workspace ?? config.defaults.workspace) === "worktree";
+    let recovered = false;
+    let killError: string | null = null;
+    const fallbackFailures: string[] = [];
+
+    try {
+      await sessionManager.kill(session.id);
+    } catch (error) {
+      killError = formatError(error);
+      incrementPollError(pollStats);
+      logLifecycle("error", "reaction.auto_merge.session_kill.failed", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        error,
+      });
+    }
+
+    if (
+      usesGitWorktreeCleanup &&
+      session.workspacePath &&
+      session.workspacePath !== project.path
+    ) {
+      const preVerify = await verifyGitSessionCleanup({
+        repoPath: project.path,
+        workspacePath: session.workspacePath,
+        branch: session.branch,
+        defaultBranch: project.defaultBranch,
+      });
+
+      const needsWorktreeFallback = preVerify.failures.some((failure) =>
+        failure.includes("worktree") || failure.includes("workspace"),
+      );
+      if (needsWorktreeFallback) {
+        try {
+          await forceRemoveGitWorktree(project.path, session.workspacePath);
+          recovered = true;
+          logLifecycle("info", "reaction.auto_merge.worktree_force_removed", {
+            pollId: pollStats?.pollId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            workspacePath: session.workspacePath,
+          });
+        } catch (error) {
+          incrementPollError(pollStats);
+          fallbackFailures.push(`worktree cleanup failed: ${formatError(error)}`);
+          logLifecycle("error", "reaction.auto_merge.worktree_force_remove.failed", {
+            pollId: pollStats?.pollId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            workspacePath: session.workspacePath,
+            error,
+          });
+        }
+      }
+
+      const needsBranchFallback = preVerify.failures.some((failure) =>
+        failure.includes("branch"),
+      );
+      if (needsBranchFallback && session.branch && session.branch !== project.defaultBranch) {
+        try {
+          await deleteLocalBranch(project.path, session.branch);
+          recovered = true;
+          logLifecycle("info", "reaction.auto_merge.branch_force_deleted", {
+            pollId: pollStats?.pollId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            branch: session.branch,
+          });
+        } catch (error) {
+          incrementPollError(pollStats);
+          fallbackFailures.push(`branch cleanup failed: ${formatError(error)}`);
+          logLifecycle("error", "reaction.auto_merge.branch_force_delete.failed", {
+            pollId: pollStats?.pollId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            branch: session.branch,
+            error,
+          });
+        }
+      }
+    }
+
+    const finalFailures = [...fallbackFailures];
+    const postVerify = await verifyGitSessionCleanup({
+      repoPath: project.path,
+      workspacePath: usesGitWorktreeCleanup ? session.workspacePath : null,
+      branch: usesGitWorktreeCleanup ? session.branch : null,
+      defaultBranch: project.defaultBranch,
+    });
+    finalFailures.push(...postVerify.failures);
+
+    try {
+      const remainingSession = await sessionManager.get(session.id);
+      if (remainingSession) {
+        finalFailures.push(`session metadata still exists for ${session.id}`);
+      }
+    } catch (error) {
+      finalFailures.push(`failed to verify session metadata cleanup: ${formatError(error)}`);
+    }
+
+    if (finalFailures.length > 0) {
+      if (killError) {
+        finalFailures.unshift(`session kill reported: ${killError}`);
+      }
+      return {
+        completed: false,
+        recovered,
+        failures: [...new Set(finalFailures)],
+      };
+    }
+
+    if (killError) {
+      recovered = true;
+      logLifecycle("info", "reaction.auto_merge.cleanup_recovered", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        killError,
+      });
+    }
+
+    return { completed: true, recovered, failures: [] };
   }
 
   function makeFingerprint(ids: string[]): string {
@@ -922,6 +1290,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       tracked ?? ((session.metadata?.["status"] as SessionStatus | undefined) || session.status);
     const newStatus = await determineStatus(session, pollStats);
     let transitionReaction: { key: string; result: ReactionResult | null } | undefined;
+    let effectiveNewStatus = newStatus;
 
     if (newStatus !== oldStatus) {
       if (pollStats) {
@@ -976,6 +1345,13 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 pollStats,
               );
               transitionReaction = { key: reactionKey, result: reactionResult };
+              if (reactionResult.statusOverride) {
+                effectiveNewStatus = reactionResult.statusOverride;
+                states.set(session.id, effectiveNewStatus);
+                if (!reactionResult.sessionCompleted) {
+                  updateSessionMetadata(session, { status: effectiveNewStatus });
+                }
+              }
               // Reaction is handling this event — suppress immediate human notification.
               // "send-to-agent" retries + escalates on its own; "notify"/"auto-merge"
               // already call notifyHuman internally. Notifying here would bypass the
@@ -1004,7 +1380,19 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       states.set(session.id, newStatus);
     }
 
-    await maybeDispatchReviewBacklog(session, oldStatus, newStatus, transitionReaction, pollStats);
+    if (transitionReaction?.result?.sessionCompleted) {
+      states.delete(session.id);
+      clearAllReactionTrackers(session.id);
+      return;
+    }
+
+    await maybeDispatchReviewBacklog(
+      session,
+      oldStatus,
+      effectiveNewStatus,
+      transitionReaction,
+      pollStats,
+    );
   }
 
   /** Run one polling cycle across all sessions. */

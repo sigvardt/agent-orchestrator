@@ -11,7 +11,7 @@
  * Reference: scripts/claude-ao-session, scripts/send-to-session
  */
 
-import { statSync, existsSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { statSync, existsSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -67,6 +67,7 @@ import {
 } from "./paths.js";
 import { asValidOpenCodeSessionId } from "./opencode-session-id.js";
 import { normalizeOrchestratorSessionStrategy } from "./orchestrator-session-strategy.js";
+import { deleteLocalBranch, forceRemoveGitWorktree } from "./session-cleanup.js";
 
 const execFileAsync = promisify(execFile);
 const OPENCODE_DISCOVERY_TIMEOUT_MS = 2_000;
@@ -75,7 +76,6 @@ const PROCESS_LIST_TIMEOUT_MS = 5_000;
 const PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
 const PROCESS_TERMINATION_POLL_MS = 200;
 const TMUX_KILL_TIMEOUT_MS = 5_000;
-const GIT_CLEANUP_TIMEOUT_MS = 30_000;
 
 interface ProcessSnapshot {
   pid: number;
@@ -87,12 +87,6 @@ function getErrorCode(err: unknown): string | undefined {
   if (!(err instanceof Error) || !("code" in err)) return undefined;
   const code = err.code;
   return typeof code === "string" ? code : undefined;
-}
-
-function getExitCode(err: unknown): number | null {
-  if (!(err instanceof Error) || !("code" in err)) return null;
-  const code = err.code;
-  return typeof code === "number" ? code : null;
 }
 
 function formatError(err: unknown): string {
@@ -283,88 +277,6 @@ async function hasTmuxSession(sessionId: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-async function gitBranchExists(repoPath: string, branch: string): Promise<boolean> {
-  try {
-    await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
-      cwd: repoPath,
-      timeout: GIT_CLEANUP_TIMEOUT_MS,
-    });
-    return true;
-  } catch (err: unknown) {
-    if (getExitCode(err) === 1) {
-      return false;
-    }
-    throw err;
-  }
-}
-
-async function isGitWorktreeRegistered(repoPath: string, workspacePath: string): Promise<boolean> {
-  const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
-    cwd: repoPath,
-    timeout: GIT_CLEANUP_TIMEOUT_MS,
-  });
-
-  const normalizedWorkspace = resolve(workspacePath);
-  return stdout.split("\n").some((line) => {
-    if (!line.startsWith("worktree ")) return false;
-    return resolve(line.slice("worktree ".length)) === normalizedWorkspace;
-  });
-}
-
-async function forceRemoveGitWorktree(repoPath: string, workspacePath: string): Promise<void> {
-  try {
-    await execFileAsync("git", ["worktree", "remove", "--force", workspacePath], {
-      cwd: repoPath,
-      timeout: GIT_CLEANUP_TIMEOUT_MS,
-    });
-  } catch {
-    // Fall through — we verify end state after prune + directory cleanup.
-  }
-
-  try {
-    await execFileAsync("git", ["worktree", "prune"], {
-      cwd: repoPath,
-      timeout: GIT_CLEANUP_TIMEOUT_MS,
-    });
-  } catch {
-    // Best effort — verification below decides success/failure.
-  }
-
-  if (existsSync(workspacePath)) {
-    rmSync(workspacePath, { recursive: true, force: true });
-  }
-
-  const stillExists = existsSync(workspacePath);
-  const stillRegistered = await isGitWorktreeRegistered(repoPath, workspacePath);
-  if (stillExists || stillRegistered) {
-    throw new Error(
-      [
-        stillRegistered ? `git still lists worktree ${workspacePath}` : null,
-        stillExists ? `directory still exists at ${workspacePath}` : null,
-      ]
-        .filter(Boolean)
-        .join("; "),
-    );
-  }
-}
-
-async function deleteLocalBranch(repoPath: string, branch: string): Promise<"deleted" | "missing"> {
-  if (!(await gitBranchExists(repoPath, branch))) {
-    return "missing";
-  }
-
-  await execFileAsync("git", ["branch", "-D", branch], {
-    cwd: repoPath,
-    timeout: GIT_CLEANUP_TIMEOUT_MS,
-  });
-
-  if (await gitBranchExists(repoPath, branch)) {
-    throw new Error(`branch ${branch} still exists after deletion attempt`);
-  }
-
-  return "deleted";
 }
 
 function errorIncludesSessionNotFound(err: unknown): boolean {
