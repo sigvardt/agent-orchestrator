@@ -40,7 +40,7 @@ import {
 } from "../lib/web-dir.js";
 import { cleanNextCache } from "../lib/dashboard-rebuild.js";
 import { preflight } from "../lib/preflight.js";
-import { startManagedServices, stopManagedServices } from "../lib/services.js";
+import { startManagedServices } from "../lib/services.js";
 
 const DEFAULT_PORT = 3000;
 
@@ -367,32 +367,6 @@ async function runStartup(
   }
 }
 
-/**
- * Stop dashboard server.
- * Uses lsof to find the process listening on the port, then kills it.
- * Best effort — if it fails, just warn the user.
- */
-async function stopDashboard(port: number): Promise<void> {
-  try {
-    // Find PIDs listening on the port (can be multiple: parent + children)
-    const { stdout } = await exec("lsof", ["-ti", `:${port}`]);
-    const pids = stdout
-      .trim()
-      .split("\n")
-      .filter((p) => p.length > 0);
-
-    if (pids.length > 0) {
-      // Kill all processes (pass PIDs as separate arguments)
-      await exec("kill", pids);
-      console.log(chalk.green("Dashboard stopped"));
-    } else {
-      console.log(chalk.yellow(`Dashboard not running on port ${port}`));
-    }
-  } catch {
-    console.log(chalk.yellow("Could not stop dashboard (may not be running)"));
-  }
-}
-
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -455,7 +429,7 @@ export function registerStart(program: Command): void {
 export function registerStop(program: Command): void {
   program
     .command("stop [project]")
-    .description("Stop orchestrator agent and dashboard for a project")
+    .description("Stop orchestrator agent for a project")
     .option("--keep-session", "Keep mapped OpenCode session after stopping")
     .option("--purge-session", "Delete mapped OpenCode session when stopping")
     .action(
@@ -464,7 +438,6 @@ export function registerStop(program: Command): void {
           const config = loadConfig();
           const { projectId: _projectId, project } = resolveProject(config, projectArg);
           const sessionId = `${project.sessionPrefix}-orchestrator`;
-          const port = config.port ?? 3000;
 
           console.log(chalk.bold(`\nStopping orchestrator for ${chalk.cyan(project.name)}\n`));
 
@@ -487,15 +460,6 @@ export function registerStop(program: Command): void {
           } else {
             console.log(chalk.yellow("Lifecycle worker not running"));
           }
-
-          // Stop supervised dashboard/websocket services, then best-effort
-          // legacy port kill for any stale ad-hoc process.
-          try {
-            await stopManagedServices(config, { manager: "auto" });
-          } catch {
-            // Fall through to legacy stop below.
-          }
-          await stopDashboard(port);
 
           console.log(chalk.bold.green("\n✓ Orchestrator stopped\n"));
         } catch (err) {

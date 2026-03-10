@@ -43,6 +43,15 @@ pnpm dev
 # Open http://localhost:3000 (or your configured port)
 ```
 
+For normal operator usage, use the supervised runtime instead:
+
+```bash
+ao services install
+ao services status --strict
+```
+
+`pnpm dev` and `ao dashboard` are the foreground development paths. `ao start` and `ao services` are the durable runtime path.
+
 ### Project Structure
 
 ```

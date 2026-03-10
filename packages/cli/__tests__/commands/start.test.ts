@@ -745,11 +745,10 @@ describe("start command — orchestrator session strategy display", () => {
 // ---------------------------------------------------------------------------
 
 describe("stop command", () => {
-  it("stops orchestrator session and dashboard", async () => {
+  it("stops orchestrator session without tearing down shared dashboard services", async () => {
     mockConfigRef.current = makeConfig({ "my-app": makeProject() });
     mockSessionManager.get.mockResolvedValue({ id: "app-orchestrator", status: "running" });
     mockSessionManager.kill.mockResolvedValue(undefined);
-    mockExec.mockResolvedValue({ stdout: "12345", stderr: "" });
 
     await program.parseAsync(["node", "test", "stop"]);
 
@@ -770,7 +769,6 @@ describe("stop command", () => {
   it("handles missing orchestrator session gracefully", async () => {
     mockConfigRef.current = makeConfig({ "my-app": makeProject() });
     mockSessionManager.get.mockResolvedValue(null);
-    mockExec.mockRejectedValue(new Error("no process"));
 
     await program.parseAsync(["node", "test", "stop"]);
 
