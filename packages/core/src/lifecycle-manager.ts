@@ -15,6 +15,7 @@ import {
   SESSION_STATUS,
   PR_STATE,
   CI_STATUS,
+  isTerminalSession,
   resolveMergeMethod,
   type CIStatus,
   type LifecycleManager,
@@ -35,6 +36,8 @@ import {
   type EventPriority,
   type SessionKillStep,
   type SessionKillStepResult,
+  type ReviewComment,
+  type AutomatedComment,
   type ProjectConfig as _ProjectConfig,
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
@@ -102,10 +105,7 @@ function getIdempotencyBucket(timestamp: Date): number {
   return Math.floor(timestamp.getTime() / EVENT_IDEMPOTENCY_BUCKET_MS);
 }
 
-function defaultIdempotencyTransition(
-  type: EventType,
-  data: Record<string, unknown>,
-): string {
+function defaultIdempotencyTransition(type: EventType, data: Record<string, unknown>): string {
   if (Object.keys(data).length === 0) {
     return type;
   }
@@ -171,8 +171,7 @@ function createEvent(
 ): OrchestratorEvent {
   const data = opts.data ?? {};
   const timestamp = opts.timestamp ?? opts.idempotencySeed?.timestamp ?? new Date();
-  const transition =
-    opts.idempotencySeed?.transition ?? defaultIdempotencyTransition(type, data);
+  const transition = opts.idempotencySeed?.transition ?? defaultIdempotencyTransition(type, data);
 
   return {
     id: randomUUID(),
@@ -364,10 +363,20 @@ const OPEN_PR_STATUS_POLL_INTERVAL_MS = 60_000;
 const WAITING_CI_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_CI_REACTION_REFIRE_INTERVAL_MS = 120_000;
 const DEFAULT_REACTION_REFIRE_INTERVAL_MS = 300_000;
+const MAX_ORPHAN_RECOVERY_ATTEMPTS = 3;
 
 interface OpenPREvaluation {
   status: SessionStatus;
   ciStatus: CIStatus;
+}
+
+interface OrphanRecoveryAction {
+  reactionKey: "ci-failed" | "changes-requested" | "bugbot-comments";
+  reactionConfig: ReactionConfig;
+  baseMessage: string;
+  trigger: string;
+  pendingComments?: ReviewComment[];
+  automatedComments?: AutomatedComment[];
 }
 
 function parseTimestampMs(value: string | undefined): number | null {
@@ -432,6 +441,60 @@ function shouldOverridePreservedPRStatus(status: SessionStatus): boolean {
   );
 }
 
+function isOrphanRecoveryCandidate(session: Session, status = session.status): boolean {
+  return (
+    session.pr !== null &&
+    status !== SESSION_STATUS.MERGED &&
+    isTerminalSession({ status, activity: session.activity })
+  );
+}
+
+function parseMetadataCount(value: string | undefined): number {
+  if (!value) return 0;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function getOrphanRecoveryRootSessionId(session: Session): string {
+  return session.metadata["orphanRecoveryRootSessionId"] ?? session.id;
+}
+
+function formatCommentLocation(path?: string, line?: number): string {
+  if (!path) return "(location unavailable)";
+  if (typeof line === "number") {
+    return `${path}:${line}`;
+  }
+  return path;
+}
+
+function summarizeReviewComments(comments: ReviewComment[]): string[] {
+  const visibleComments = comments.slice(0, 5).map((comment) => {
+    const body = comment.body.replace(/\s+/g, " ").trim();
+    return `- ${formatCommentLocation(comment.path, comment.line)}: ${body} (${comment.url})`;
+  });
+
+  if (comments.length > visibleComments.length) {
+    visibleComments.push(`- ...and ${comments.length - visibleComments.length} more comment(s)`);
+  }
+
+  return visibleComments;
+}
+
+function summarizeAutomatedComments(comments: AutomatedComment[]): string[] {
+  const visibleComments = comments.slice(0, 5).map((comment) => {
+    const body = comment.body.replace(/\s+/g, " ").trim();
+    return `- [${comment.severity}] ${formatCommentLocation(comment.path, comment.line)}: ${body} (${comment.url})`;
+  });
+
+  if (comments.length > visibleComments.length) {
+    visibleComments.push(
+      `- ...and ${comments.length - visibleComments.length} more automated finding(s)`,
+    );
+  }
+
+  return visibleComments;
+}
+
 function getPersistentReactionKey(status: SessionStatus): string | null {
   switch (status) {
     case SESSION_STATUS.CI_FAILED:
@@ -445,10 +508,7 @@ function getPersistentReactionKey(status: SessionStatus): string | null {
   }
 }
 
-function getReactionRefireIntervalMs(
-  reactionKey: string,
-  reactionConfig: ReactionConfig,
-): number {
+function getReactionRefireIntervalMs(reactionKey: string, reactionConfig: ReactionConfig): number {
   if (typeof reactionConfig.refireIntervalMs === "number") {
     return reactionConfig.refireIntervalMs;
   }
@@ -477,19 +537,14 @@ function listKillSteps(
   return [...steps.values()];
 }
 
-function isSessionCleanupComplete(
-  steps: Map<SessionKillStep, SessionKillStepResult>,
-): boolean {
+function isSessionCleanupComplete(steps: Map<SessionKillStep, SessionKillStepResult>): boolean {
   const metadata = steps.get("metadata");
   if (!metadata || metadata.status !== "success") {
     return false;
   }
 
   return !listKillSteps(steps).some(
-    (step) =>
-      step.status === "failed" &&
-      step.step !== "runtime" &&
-      step.step !== "opencode",
+    (step) => step.status === "failed" && step.step !== "runtime" && step.step !== "opencode",
   );
 }
 
@@ -615,6 +670,333 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         error,
       });
       return fallbackMessage;
+    }
+  }
+
+  function buildOrphanRecoveryPrompt(
+    session: Session,
+    action: OrphanRecoveryAction,
+    recoveryAttempt: number,
+  ): string {
+    if (!session.pr) {
+      return action.baseMessage;
+    }
+
+    const previousSummary = (session.agentInfo?.summary ?? session.metadata["summary"] ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const lines = [
+      "You are taking over an orphaned PR because the previous AO session exited unexpectedly.",
+      `Previous session: ${session.id}`,
+      `Recovery attempt: ${recoveryAttempt}`,
+      `Trigger: ${action.trigger}`,
+      `PR: #${session.pr.number} ${session.pr.url}`,
+      `Branch: ${session.pr.branch || session.branch || "(unknown)"}`,
+      session.issueId ? `Issue: ${session.issueId}` : null,
+      previousSummary ? `Previous summary: ${previousSummary}` : null,
+    ].filter((line): line is string => Boolean(line));
+
+    if (action.pendingComments && action.pendingComments.length > 0) {
+      lines.push("", "Pending review comments:");
+      lines.push(...summarizeReviewComments(action.pendingComments));
+    }
+
+    if (action.automatedComments && action.automatedComments.length > 0) {
+      lines.push("", "Automated review findings:");
+      lines.push(...summarizeAutomatedComments(action.automatedComments));
+    }
+
+    lines.push("", action.baseMessage);
+    return lines.join("\n");
+  }
+
+  async function selectOrphanRecoveryAction(
+    session: Session,
+    scm: SCM,
+    pollStats?: LifecyclePollStats,
+  ): Promise<OrphanRecoveryAction | null> {
+    if (!session.pr) {
+      return null;
+    }
+
+    const prState = await scm.getPRState(session.pr);
+    if (prState !== PR_STATE.OPEN) {
+      return null;
+    }
+
+    const ciReactionConfig = getSendToAgentRecoveryConfig(session, "ci-failed");
+    if (ciReactionConfig) {
+      const ciStatus = await scm.getCISummary(session.pr);
+      if (ciStatus === CI_STATUS.FAILING) {
+        const baseMessage = await buildSendToAgentMessage(
+          session.id,
+          session.projectId,
+          "ci-failed",
+          ciReactionConfig,
+          pollStats,
+          session,
+        );
+        if (baseMessage) {
+          return {
+            reactionKey: "ci-failed",
+            reactionConfig: ciReactionConfig,
+            baseMessage,
+            trigger: "CI failed on the PR after the previous session exited.",
+          };
+        }
+      }
+    }
+
+    const reviewReactionConfig = getSendToAgentRecoveryConfig(session, "changes-requested");
+    if (reviewReactionConfig) {
+      const pendingComments = await scm.getPendingComments(session.pr);
+      if (pendingComments.length > 0) {
+        const baseMessage = await buildSendToAgentMessage(
+          session.id,
+          session.projectId,
+          "changes-requested",
+          reviewReactionConfig,
+          pollStats,
+          session,
+        );
+        if (baseMessage) {
+          return {
+            reactionKey: "changes-requested",
+            reactionConfig: reviewReactionConfig,
+            baseMessage,
+            trigger: "Unresolved human review comments were found on the orphaned PR.",
+            pendingComments,
+          };
+        }
+      }
+
+      const reviewDecision = await scm.getReviewDecision(session.pr);
+      if (reviewDecision === "changes_requested") {
+        const baseMessage = await buildSendToAgentMessage(
+          session.id,
+          session.projectId,
+          "changes-requested",
+          reviewReactionConfig,
+          pollStats,
+          session,
+        );
+        if (baseMessage) {
+          return {
+            reactionKey: "changes-requested",
+            reactionConfig: reviewReactionConfig,
+            baseMessage,
+            trigger: "Changes were requested on the PR after the previous session exited.",
+          };
+        }
+      }
+    }
+
+    const automatedReactionConfig = getSendToAgentRecoveryConfig(session, "bugbot-comments");
+    if (automatedReactionConfig) {
+      const automatedComments = await scm.getAutomatedComments(session.pr);
+      if (automatedComments.length > 0) {
+        const baseMessage = await buildSendToAgentMessage(
+          session.id,
+          session.projectId,
+          "bugbot-comments",
+          automatedReactionConfig,
+          pollStats,
+          session,
+        );
+        if (baseMessage) {
+          return {
+            reactionKey: "bugbot-comments",
+            reactionConfig: automatedReactionConfig,
+            baseMessage,
+            trigger: "Automated review findings were posted after the previous session exited.",
+            automatedComments,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async function maybeRecoverOrphanedPR(
+    session: Session,
+    status: SessionStatus,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    if (!isOrphanRecoveryCandidate(session, status) || !session.pr) {
+      return;
+    }
+
+    const project = config.projects[session.projectId];
+    if (!project?.scm) {
+      return;
+    }
+
+    const scm = registry.get<SCM>("scm", project.scm.plugin);
+    if (!scm) {
+      return;
+    }
+
+    const action = await selectOrphanRecoveryAction(session, scm, pollStats);
+    if (!action) {
+      return;
+    }
+
+    const attemptCount = parseMetadataCount(session.metadata["orphanRecoveryAttemptCount"]);
+    const refireIntervalMs = getReactionRefireIntervalMs(action.reactionKey, action.reactionConfig);
+    const lastAttemptAtMs = parseTimestampMs(session.metadata["orphanRecoveryLastAttemptAt"]);
+    if (lastAttemptAtMs !== null && Date.now() - lastAttemptAtMs < refireIntervalMs) {
+      return;
+    }
+
+    if (attemptCount >= MAX_ORPHAN_RECOVERY_ATTEMPTS) {
+      if (!session.metadata["orphanRecoveryEscalatedAt"]) {
+        const escalatedAt = new Date().toISOString();
+        updateSessionMetadata(session, {
+          orphanRecoveryEscalatedAt: escalatedAt,
+        });
+        const event = createEvent("reaction.escalated", {
+          sessionId: session.id,
+          projectId: session.projectId,
+          priority: "urgent",
+          message: `Orphan PR recovery hit the retry limit for PR #${session.pr.number}`,
+          data: {
+            reactionKey: action.reactionKey,
+            prNumber: session.pr.number,
+            prUrl: session.pr.url,
+            attempts: attemptCount,
+            maxAttempts: MAX_ORPHAN_RECOVERY_ATTEMPTS,
+          },
+        });
+        await notifyHuman(event, "urgent", pollStats);
+      }
+      return;
+    }
+
+    const nextAttempt = attemptCount + 1;
+    const nowIso = new Date().toISOString();
+    const orphanRecoveryRootSessionId = getOrphanRecoveryRootSessionId(session);
+    updateSessionMetadata(session, {
+      orphanRecoveryAttemptCount: String(nextAttempt),
+      orphanRecoveryLastAttemptAt: nowIso,
+      orphanRecoveryLastReactionKey: action.reactionKey,
+      orphanRecoveryRootSessionId,
+      orphanRecoveryEscalatedAt: "",
+    });
+
+    const recoveryPrompt = buildOrphanRecoveryPrompt(session, action, nextAttempt);
+    const recoveryBranch = session.branch ?? session.pr.branch;
+    if (!recoveryBranch) {
+      return;
+    }
+
+    const recoveryAgent = session.metadata["agent"] ?? project.agent ?? config.defaults.agent;
+    let recoverySession: Session | null = null;
+    let prClaimed = false;
+
+    logLifecycle("info", "orphan_recovery.started", {
+      pollId: pollStats?.pollId,
+      projectId: session.projectId,
+      sessionId: session.id,
+      reactionKey: action.reactionKey,
+      prNumber: session.pr.number,
+      recoveryAttempt: nextAttempt,
+      branch: recoveryBranch,
+    });
+
+    try {
+      recoverySession = await sessionManager.spawn({
+        projectId: session.projectId,
+        issueId: session.issueId ?? undefined,
+        branch: recoveryBranch,
+        agent: recoveryAgent,
+      });
+
+      const claimResult = await sessionManager.claimPR(
+        recoverySession.id,
+        String(session.pr.number),
+        {
+          takeover: true,
+        },
+      );
+      prClaimed = true;
+
+      session.pr = null;
+      updateSessionMetadata(session, {
+        pr: "",
+        prAutoDetect: "off",
+        replacedBy: recoverySession.id,
+        replacedAt: nowIso,
+      });
+
+      recoverySession.pr = claimResult.pr;
+      recoverySession.branch = claimResult.pr.branch;
+      updateSessionMetadata(recoverySession, {
+        supersedes: session.id,
+        handoffReason: "orphan-pr-recovery",
+        handoffAt: nowIso,
+        orphanRecoveryAttemptCount: String(nextAttempt),
+        orphanRecoveryLastAttemptAt: nowIso,
+        orphanRecoveryLastReactionKey: action.reactionKey,
+        orphanRecoveryRootSessionId,
+        orphanRecoveryEscalatedAt: "",
+      });
+
+      await sessionManager.send(recoverySession.id, recoveryPrompt);
+
+      const event = createEvent("reaction.triggered", {
+        sessionId: recoverySession.id,
+        projectId: session.projectId,
+        priority: "action",
+        message: `Spawned recovery session ${recoverySession.id} for orphaned PR #${claimResult.pr.number}`,
+        data: {
+          reactionKey: action.reactionKey,
+          orphanedSessionId: session.id,
+          recoverySessionId: recoverySession.id,
+          prNumber: claimResult.pr.number,
+          prUrl: claimResult.pr.url,
+          recoveryAttempt: nextAttempt,
+        },
+      });
+      await notifyHuman(event, "action", pollStats);
+
+      logLifecycle("info", "orphan_recovery.completed", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        recoverySessionId: recoverySession.id,
+        reactionKey: action.reactionKey,
+        prNumber: claimResult.pr.number,
+        recoveryAttempt: nextAttempt,
+      });
+    } catch (error) {
+      incrementPollError(pollStats);
+      logLifecycle("error", "orphan_recovery.failed", {
+        pollId: pollStats?.pollId,
+        projectId: session.projectId,
+        sessionId: session.id,
+        recoverySessionId: recoverySession?.id,
+        reactionKey: action.reactionKey,
+        prNumber: session.pr?.number,
+        recoveryAttempt: nextAttempt,
+        error,
+      });
+
+      if (recoverySession && !prClaimed) {
+        try {
+          await sessionManager.kill(recoverySession.id);
+        } catch (cleanupError) {
+          incrementPollError(pollStats);
+          logLifecycle("error", "orphan_recovery.cleanup_failed", {
+            pollId: pollStats?.pollId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            recoverySessionId: recoverySession.id,
+            error: cleanupError,
+          });
+        }
+      }
     }
   }
 
@@ -923,14 +1305,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           lastPrCiStatus: openPREvaluation.ciStatus,
         });
 
-        if (
-          agentExitedWithOpenPR &&
-          isWaitingForCiVerdict(openPREvaluation.ciStatus)
-        ) {
-          if (
-            currentStatus === SESSION_STATUS.WAITING_CI &&
-            isWaitingCiTimedOut(session)
-          ) {
+        if (agentExitedWithOpenPR && isWaitingForCiVerdict(openPREvaluation.ciStatus)) {
+          if (currentStatus === SESSION_STATUS.WAITING_CI && isWaitingCiTimedOut(session)) {
             return SESSION_STATUS.DONE;
           }
 
@@ -1121,10 +1497,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         upsertKillStep(steps, {
           step: "branch",
           status: "failed",
-          message: [
-            branchStep?.message,
-            `Auto-merge fallback failed: ${formatErrorMessage(error)}`,
-          ]
+          message: [branchStep?.message, `Auto-merge fallback failed: ${formatErrorMessage(error)}`]
             .filter(Boolean)
             .join("; "),
         });
@@ -1163,10 +1536,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     const blockingFailureMessage = finalSteps
       .filter(
-        (step) =>
-          step.status === "failed" &&
-          step.step !== "runtime" &&
-          step.step !== "opencode",
+        (step) => step.status === "failed" && step.step !== "runtime" && step.step !== "opencode",
       )
       .map((step) => `${step.step}: ${step.message}`)
       .join("; ");
@@ -1495,6 +1865,17 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       ? { ...globalReaction, ...projectReaction }
       : globalReaction;
     return reactionConfig ? (reactionConfig as ReactionConfig) : null;
+  }
+
+  function getSendToAgentRecoveryConfig(
+    session: Session,
+    reactionKey: OrphanRecoveryAction["reactionKey"],
+  ): ReactionConfig | null {
+    const reactionConfig = getReactionConfigForSession(session, reactionKey);
+    if (!reactionConfig) return null;
+    if (reactionConfig.action !== "send-to-agent") return null;
+    if (reactionConfig.auto === false) return null;
+    return reactionConfig;
   }
 
   function updateSessionMetadata(session: Session, updates: Partial<Record<string, string>>): void {
@@ -1863,10 +2244,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
               );
               transitionReaction = { key: reactionKey, result: reactionResult };
 
-              if (
-                reactionResult.resultingStatus &&
-                reactionResult.resultingStatus !== newStatus
-              ) {
+              if (reactionResult.resultingStatus && reactionResult.resultingStatus !== newStatus) {
                 const reactionFromStatus = newStatus;
                 const finalStatus = reactionResult.resultingStatus;
                 const finalEventType = statusToEventType(newStatus, finalStatus);
@@ -1938,11 +2316,23 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       return;
     }
 
-    await maybeDispatchReviewBacklog(session, oldStatus, newStatus, transitionReaction, pollStats);
+    const shouldSkipReviewBacklog =
+      newStatus === oldStatus && isOrphanRecoveryCandidate(session, newStatus);
+    if (!shouldSkipReviewBacklog) {
+      await maybeDispatchReviewBacklog(
+        session,
+        oldStatus,
+        newStatus,
+        transitionReaction,
+        pollStats,
+      );
+    }
 
     if (newStatus === oldStatus) {
       await maybeRefirePersistentReaction(session, newStatus, pollStats);
     }
+
+    await maybeRecoverOrphanedPR(session, newStatus, pollStats);
   }
 
   /** Run one polling cycle across all sessions. */
@@ -1973,7 +2363,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       const sessionsToCheck = sessions.filter((s) => {
         if (!INACTIVE_SESSION_STATUSES.has(s.status)) return true;
         const tracked = states.get(s.id);
-        return tracked !== undefined && tracked !== s.status;
+        return (tracked !== undefined && tracked !== s.status) || isOrphanRecoveryCandidate(s);
       });
 
       const activeSessions = sessions.filter((s) => !INACTIVE_SESSION_STATUSES.has(s.status));

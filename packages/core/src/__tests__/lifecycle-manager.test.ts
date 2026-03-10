@@ -1489,7 +1489,9 @@ describe("reactions", () => {
       closePR: vi.fn(),
       getCIChecks: vi.fn(),
       getCISummary: vi.fn().mockResolvedValue("failing"),
-      getCIFailureLogs: vi.fn().mockResolvedValue("FAIL src/example.test.ts\nExpected true to be false"),
+      getCIFailureLogs: vi
+        .fn()
+        .mockResolvedValue("FAIL src/example.test.ts\nExpected true to be false"),
       getReviews: vi.fn(),
       getReviewDecision: vi.fn().mockResolvedValue("none"),
       getPendingComments: vi.fn(),
@@ -2310,6 +2312,314 @@ describe("reactions", () => {
     expect(mockNotifier.notify).toHaveBeenCalledWith(
       expect.objectContaining({ type: "ci.failing" }),
     );
+  });
+
+  it("spawns a recovery session for orphaned PRs when CI fails after the owner died", async () => {
+    config.reactions = {
+      "ci-failed": {
+        auto: true,
+        action: "send-to-agent",
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("failing"),
+      getCIFailureLogs: vi.fn().mockResolvedValue("src/index.ts:14 lint failed"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("none"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const orphanedSession = makeSession({
+      status: "killed",
+      activity: "exited",
+      pr: makePR(),
+      metadata: {
+        agent: "mock-agent",
+        summary: "I already fixed two of the three lint errors.",
+      },
+    });
+    const recoverySession = makeSession({
+      id: "app-2",
+      status: "spawning",
+      pr: null,
+      metadata: {},
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(orphanedSession);
+    vi.mocked(mockSessionManager.spawn).mockResolvedValue(recoverySession);
+    vi.mocked(mockSessionManager.claimPR).mockResolvedValue({
+      sessionId: "app-2",
+      projectId: "my-app",
+      pr: makePR(),
+      branchChanged: false,
+      githubAssigned: false,
+      takenOverFrom: ["app-1"],
+    });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "killed",
+      project: "my-app",
+      pr: makePR().url,
+      agent: "mock-agent",
+      summary: "I already fixed two of the three lint errors.",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockSessionManager.spawn).toHaveBeenCalledWith({
+      projectId: "my-app",
+      issueId: undefined,
+      branch: "feat/test",
+      agent: "mock-agent",
+    });
+    expect(mockSessionManager.claimPR).toHaveBeenCalledWith("app-2", "42", {
+      takeover: true,
+    });
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-2",
+      expect.stringContaining("You are taking over an orphaned PR"),
+    );
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-2",
+      expect.stringContaining("src/index.ts:14 lint failed"),
+    );
+
+    const orphanedMetadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(orphanedMetadata?.["replacedBy"]).toBe("app-2");
+    expect(orphanedMetadata?.["pr"]).toBeUndefined();
+
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "reaction.triggered",
+        priority: "action",
+        data: expect.objectContaining({
+          orphanedSessionId: "app-1",
+          recoverySessionId: "app-2",
+          prNumber: 42,
+        }),
+      }),
+    );
+  });
+
+  it("includes unresolved review comment context when recovering an orphaned PR", async () => {
+    config.reactions = {
+      "changes-requested": {
+        auto: true,
+        action: "send-to-agent",
+        message: "Please address the review comments and push a fix.",
+      },
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("passing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("none"),
+      getPendingComments: vi.fn().mockResolvedValue([
+        {
+          id: "c1",
+          author: "reviewer",
+          body: "Please rename this helper before merge.",
+          path: "src/app.ts",
+          line: 12,
+          isResolved: false,
+          createdAt: new Date(),
+          url: "https://example.com/comment/1",
+        },
+      ]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        return null;
+      }),
+    };
+
+    const orphanedSession = makeSession({
+      status: "killed",
+      activity: "exited",
+      pr: makePR(),
+      metadata: { agent: "mock-agent" },
+    });
+    const recoverySession = makeSession({
+      id: "app-2",
+      status: "spawning",
+      pr: null,
+      metadata: {},
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(orphanedSession);
+    vi.mocked(mockSessionManager.spawn).mockResolvedValue(recoverySession);
+    vi.mocked(mockSessionManager.claimPR).mockResolvedValue({
+      sessionId: "app-2",
+      projectId: "my-app",
+      pr: makePR(),
+      branchChanged: false,
+      githubAssigned: false,
+      takenOverFrom: ["app-1"],
+    });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "killed",
+      project: "my-app",
+      pr: makePR().url,
+      agent: "mock-agent",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-2",
+      expect.stringContaining("Pending review comments:"),
+    );
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-2",
+      expect.stringContaining("src/app.ts:12"),
+    );
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-2",
+      expect.stringContaining("Please rename this helper before merge."),
+    );
+  });
+
+  it("stops retrying orphan recovery after the attempt limit is reached", async () => {
+    config.reactions = {
+      "ci-failed": {
+        auto: true,
+        action: "send-to-agent",
+        message: "Fix the CI failure.",
+        refireIntervalMs: 0,
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("failing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("none"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const orphanedSession = makeSession({
+      status: "killed",
+      activity: "exited",
+      pr: makePR(),
+      metadata: { agent: "mock-agent" },
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(orphanedSession);
+    vi.mocked(mockSessionManager.spawn).mockRejectedValue(new Error("spawn failed"));
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "killed",
+      project: "my-app",
+      pr: makePR().url,
+      agent: "mock-agent",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+    await lm.check("app-1");
+    await lm.check("app-1");
+    await lm.check("app-1");
+
+    expect(mockSessionManager.spawn).toHaveBeenCalledTimes(3);
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "reaction.escalated",
+        priority: "urgent",
+        data: expect.objectContaining({
+          attempts: 3,
+          maxAttempts: 3,
+        }),
+      }),
+    );
+
+    const orphanedMetadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(orphanedMetadata?.["orphanRecoveryAttemptCount"]).toBe("3");
+    expect(orphanedMetadata?.["orphanRecoveryEscalatedAt"]).toBeDefined();
   });
 
   it("dispatches unresolved review comments even when reviewDecision stays unchanged", async () => {
