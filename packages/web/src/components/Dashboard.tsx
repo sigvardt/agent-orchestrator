@@ -16,6 +16,7 @@ import { PRTableRow } from "./PRStatus";
 import { DynamicFavicon } from "./DynamicFavicon";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { UsageOverview } from "./UsageOverview";
+import { GitHubVitals } from "./GitHubVitals";
 
 interface BacklogIssue {
   id: string;
@@ -284,6 +285,10 @@ export function Dashboard({
       </div>
 
       <UsageOverview />
+      <GitHubVitals
+        projectName={projectName}
+        projectId={projectIds.length === 1 ? projectIds[0] : undefined}
+      />
       {globalPause && (
         <div className="mb-6 rounded border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.07)] px-3.5 py-2.5 text-[11px] text-[var(--color-status-attention)]">
           <span className="font-semibold">Syntese paused:</span> {globalPause.reason}. Resume
