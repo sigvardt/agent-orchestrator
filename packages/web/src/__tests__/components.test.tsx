@@ -469,6 +469,16 @@ describe("UsagePanels", () => {
             source: "empty",
             dials: [
               {
+                id: "claude-weekly-all-models",
+                label: "Weekly limits - All models",
+                kind: "percent_remaining",
+                status: "unavailable",
+                value: null,
+                maxValue: 100,
+                displayValue: "--",
+                resetsAt: null,
+              },
+              {
                 id: "claude-current-session",
                 label: "Current session usage",
                 kind: "percent_used",
@@ -486,7 +496,11 @@ describe("UsagePanels", () => {
 
     expect(screen.getByText("Cached snapshot")).toBeInTheDocument();
     expect(screen.getByText("Last updated 2 hours ago")).toBeInTheDocument();
-    expect(screen.getAllByText("No data yet").length).toBeGreaterThan(0);
+    expect(screen.getByText("Awaiting first snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Start a session to see usage.")).toBeInTheDocument();
+    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getAllByText("Starts tracking on first session")).toHaveLength(2);
 
     vi.useRealTimers();
   });

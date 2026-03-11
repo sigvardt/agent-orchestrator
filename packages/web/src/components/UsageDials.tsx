@@ -94,7 +94,18 @@ function getSnapshotStatusLabel(source: DashboardUsageSource): string {
     case "cached":
       return "Cached snapshot";
     case "empty":
-      return "No data yet";
+      return "Awaiting first snapshot";
+  }
+}
+
+function getEmptyDialDisplayValue(dial: UsageDial): string {
+  switch (dial.kind) {
+    case "percent_remaining":
+      return "100%";
+    case "percent_used":
+      return "0%";
+    case "absolute":
+      return "Ready";
   }
 }
 
@@ -137,13 +148,18 @@ function CircularUsageDial({
   const strokeWidth = compact ? 6 : 7;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const progress = progressForDial(dial);
+  const isEmptyState = source === "empty";
+  const progress = isEmptyState ? 100 : progressForDial(dial);
   const dashOffset =
     progress === null ? circumference : circumference - (progress / 100) * circumference;
   const resetLabel = formatResetTime(dial.resetsAt);
+  const displayValue =
+    isEmptyState && dial.status === "unavailable"
+      ? getEmptyDialDisplayValue(dial)
+      : dial.displayValue;
   const helperText =
     source === "empty"
-      ? "No data yet"
+      ? "Starts tracking on first session"
       : dial.status === "unavailable"
         ? source === "cached"
           ? (formatRelativeUpdate(capturedAt) ?? "Snapshot unavailable")
@@ -186,12 +202,20 @@ function CircularUsageDial({
               cy={size / 2}
               r={radius}
               fill="none"
-              stroke={dial.status === "unavailable" ? "rgba(125,133,144,0.35)" : accent}
+              stroke={
+                dial.status === "unavailable"
+                  ? isEmptyState
+                    ? `color-mix(in srgb, ${accent} 36%, rgba(255,255,255,0.14))`
+                    : "rgba(125,133,144,0.35)"
+                  : accent
+              }
               strokeWidth={strokeWidth}
               strokeLinecap="round"
               strokeDasharray={
                 dial.status === "unavailable"
-                  ? `${circumference / 18} ${circumference / 22}`
+                  ? isEmptyState
+                    ? circumference
+                    : `${circumference / 18} ${circumference / 22}`
                   : circumference
               }
               strokeDashoffset={dashOffset}
@@ -199,7 +223,9 @@ function CircularUsageDial({
                 transition: "stroke-dashoffset 320ms ease, stroke 220ms ease",
                 filter:
                   dial.status === "unavailable"
-                    ? "none"
+                    ? isEmptyState
+                      ? `drop-shadow(0 0 10px color-mix(in srgb, ${accent} 18%, transparent))`
+                      : "none"
                     : `drop-shadow(0 0 12px color-mix(in srgb, ${accent} 32%, transparent))`,
               }}
             />
@@ -208,10 +234,10 @@ function CircularUsageDial({
             <div
               className={cn(
                 "font-[var(--font-mono)] font-semibold tabular-nums text-[var(--color-text-primary)]",
-                valueClassName(dial.displayValue, compact),
+                valueClassName(displayValue, compact),
               )}
             >
-              {dial.status === "unlimited" ? "∞" : dial.displayValue}
+              {dial.status === "unlimited" ? "∞" : displayValue}
             </div>
             {dial.status === "unlimited" && (
               <div className="mt-0.5 text-[8px] uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">
@@ -250,7 +276,12 @@ function UsageProviderSection({
   source?: DashboardUsageSource;
 }) {
   const meta = PROVIDER_META[snapshot.provider];
-  const updateLabel = source === "cached" ? formatRelativeUpdate(snapshot.capturedAt) : null;
+  const updateLabel =
+    source === "cached"
+      ? formatRelativeUpdate(snapshot.capturedAt)
+      : source === "empty"
+        ? "Start a session to see usage."
+        : null;
 
   return (
     <section
