@@ -97,6 +97,11 @@ const DIAL_CONFIGS: Record<string, DialConfig> = {
     windowMs: 7 * 24 * 60 * 60 * 1000,
     kind: "percent_used",
   },
+  "claude-weekly-sonnet-only": {
+    windowType: "rolling",
+    windowMs: 7 * 24 * 60 * 60 * 1000,
+    kind: "percent_used",
+  },
 };
 
 // ─── File I/O ─────────────────────────────────────────────────────────────────

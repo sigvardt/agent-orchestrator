@@ -1084,6 +1084,31 @@ export interface AccountOverage {
   remaining: number;
 }
 
+export type AccountModelFamily = "sonnet" | "opus" | "haiku" | "unknown";
+
+export type AccountRoutePool = "shared" | "sonnet-only" | "overage";
+
+export interface AccountRoutingGauge {
+  dialId: string;
+  label: string;
+  percentUsed: number | null;
+  percentRemaining: number | null;
+  resetsAt: string | null;
+}
+
+export interface AccountModelRouteAvailability {
+  available: boolean;
+  preferredPool: AccountRoutePool | null;
+  reason: string;
+}
+
+export interface AccountRoutingCapacity {
+  currentSessionGauge: AccountRoutingGauge | null;
+  sharedWeeklyGauge: AccountRoutingGauge | null;
+  sonnetWeeklyGauge: AccountRoutingGauge | null;
+  byModel: Record<AccountModelFamily, AccountModelRouteAvailability>;
+}
+
 /** Computed real-time capacity for a single account */
 export interface AccountCapacity {
   accountId: string;
@@ -1093,6 +1118,8 @@ export interface AccountCapacity {
   overage: AccountOverage | null;
   activeSessions: number;
   status: AccountCapacityStatus;
+  usageSnapshot?: UsageSnapshot | null;
+  routing?: AccountRoutingCapacity | null;
 }
 
 export interface DefaultPlugins {
@@ -1311,6 +1338,7 @@ export interface SessionMetadata {
   summary?: string;
   project?: string;
   agent?: string; // Agent plugin name (e.g. "codex", "claude-code") — persisted for lifecycle
+  accountId?: string;
   createdAt?: string;
   runtimeHandle?: string;
   restoredAt?: string;

@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   computeAccountCapacity,
   getEffectiveAccounts,
   resolveAccountForProject,
+  selectAccountForProject,
   type AccountCapacityState,
+  writeCapacityState,
 } from "../../src/lib/capacity-store.js";
-import type { AccountConfig, OrchestratorConfig } from "@syntese/core";
+import type { AccountConfig, OrchestratorConfig, PluginRegistry, UsageSnapshot } from "@syntese/core";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -17,7 +22,17 @@ function makeState(overrides: Partial<AccountCapacityState> = {}): AccountCapaci
     windowStartedAt: null,
     overageConsumed: 0,
     updatedAt: new Date().toISOString(),
+    usageSnapshot: null,
     ...overrides,
+  };
+}
+
+function makeClaudeUsageSnapshot(dials: UsageSnapshot["dials"]): UsageSnapshot {
+  return {
+    provider: "claude-code",
+    plan: "Max",
+    capturedAt: "2026-01-15T12:00:00Z",
+    dials,
   };
 }
 
@@ -173,6 +188,54 @@ describe("computeAccountCapacity", () => {
     expect(result.baseQuota.percentRemaining).toBe(100);
     expect(result.status).toBe("available");
   });
+
+  it("keeps Sonnet capacity available when shared Claude pool is exhausted", () => {
+    const config = makeConfig({ agent: "claude-code", baseQuota: { estimatedTotal: 100, windowHours: 5 } });
+    const state = makeState({
+      accountId: "test",
+      consumed: 100,
+      windowStartedAt: new Date("2026-01-15T10:00:00Z").toISOString(),
+      usageSnapshot: makeClaudeUsageSnapshot([
+        {
+          id: "claude-current-session",
+          label: "Current session usage",
+          kind: "percent_used",
+          status: "available",
+          value: 100,
+          maxValue: 100,
+          displayValue: "100%",
+          resetsAt: "2026-01-15T15:00:00Z",
+        },
+        {
+          id: "claude-weekly-all-models",
+          label: "Weekly limits - All models",
+          kind: "percent_used",
+          status: "available",
+          value: 100,
+          maxValue: 100,
+          displayValue: "100%",
+          resetsAt: "2026-01-22T12:00:00Z",
+        },
+        {
+          id: "claude-weekly-sonnet-only",
+          label: "Weekly limits - Sonnet only",
+          kind: "percent_used",
+          status: "available",
+          value: 20,
+          maxValue: 100,
+          displayValue: "20%",
+          resetsAt: "2026-01-22T12:00:00Z",
+        },
+      ]),
+    });
+
+    const result = computeAccountCapacity("test", config, state, 0);
+
+    expect(result.status).toBe("available");
+    expect(result.routing?.byModel.sonnet.available).toBe(true);
+    expect(result.routing?.byModel.sonnet.preferredPool).toBe("sonnet-only");
+    expect(result.routing?.byModel.opus.available).toBe(false);
+  });
 });
 
 describe("getEffectiveAccounts", () => {
@@ -244,5 +307,238 @@ describe("resolveAccountForProject", () => {
 
     // my-app uses "claude-code", no explicit claude-code account → fallback
     expect(accountId).toBe("claude-code");
+  });
+});
+
+describe("selectAccountForProject", () => {
+  const originalHome = process.env["HOME"];
+  let tempHome: string;
+
+  beforeEach(async () => {
+    tempHome = await mkdtemp(join(tmpdir(), "ao-capacity-"));
+    process.env["HOME"] = tempHome;
+  });
+
+  afterEach(async () => {
+    if (originalHome) {
+      process.env["HOME"] = originalHome;
+    } else {
+      delete process.env["HOME"];
+    }
+    await rm(tempHome, { recursive: true, force: true });
+  });
+
+  it("prefers the dedicated Sonnet pool for Sonnet models", async () => {
+    const config = makeOrchestratorConfig({
+      projects: {
+        "my-app": {
+          ...makeOrchestratorConfig().projects["my-app"],
+          agent: "claude-code",
+          agentConfig: { model: "claude-sonnet-4-20250514" },
+        },
+      },
+      accounts: {
+        "claude-max-1": {
+          agent: "claude-code",
+          baseQuota: { estimatedTotal: 100, windowHours: 5 },
+        },
+        "claude-max-2": {
+          agent: "claude-code",
+          baseQuota: { estimatedTotal: 100, windowHours: 5 },
+        },
+      },
+    });
+
+    await writeCapacityState(
+      makeState({
+        accountId: "claude-max-1",
+        usageSnapshot: makeClaudeUsageSnapshot([
+          {
+            id: "claude-current-session",
+            label: "Current session usage",
+            kind: "percent_used",
+            status: "available",
+            value: 85,
+            maxValue: 100,
+            displayValue: "85%",
+            resetsAt: "2026-01-15T15:00:00Z",
+          },
+          {
+            id: "claude-weekly-all-models",
+            label: "Weekly limits - All models",
+            kind: "percent_used",
+            status: "available",
+            value: 85,
+            maxValue: 100,
+            displayValue: "85%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+          {
+            id: "claude-weekly-sonnet-only",
+            label: "Weekly limits - Sonnet only",
+            kind: "percent_used",
+            status: "available",
+            value: 10,
+            maxValue: 100,
+            displayValue: "10%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+        ]),
+      }),
+    );
+
+    await writeCapacityState(
+      makeState({
+        accountId: "claude-max-2",
+        usageSnapshot: makeClaudeUsageSnapshot([
+          {
+            id: "claude-current-session",
+            label: "Current session usage",
+            kind: "percent_used",
+            status: "available",
+            value: 40,
+            maxValue: 100,
+            displayValue: "40%",
+            resetsAt: "2026-01-15T15:00:00Z",
+          },
+          {
+            id: "claude-weekly-all-models",
+            label: "Weekly limits - All models",
+            kind: "percent_used",
+            status: "available",
+            value: 40,
+            maxValue: 100,
+            displayValue: "40%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+          {
+            id: "claude-weekly-sonnet-only",
+            label: "Weekly limits - Sonnet only",
+            kind: "percent_used",
+            status: "available",
+            value: 90,
+            maxValue: 100,
+            displayValue: "90%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+        ]),
+      }),
+    );
+
+    const accountId = await selectAccountForProject(
+      config,
+      "my-app",
+      {} as PluginRegistry,
+      [],
+    );
+
+    expect(accountId).toBe("claude-max-1");
+  });
+
+  it("keeps Opus models on the healthiest shared pool", async () => {
+    const config = makeOrchestratorConfig({
+      projects: {
+        "my-app": {
+          ...makeOrchestratorConfig().projects["my-app"],
+          agent: "claude-code",
+          agentConfig: { model: "claude-opus-4-1" },
+        },
+      },
+      accounts: {
+        "claude-max-1": {
+          agent: "claude-code",
+          baseQuota: { estimatedTotal: 100, windowHours: 5 },
+        },
+        "claude-max-2": {
+          agent: "claude-code",
+          baseQuota: { estimatedTotal: 100, windowHours: 5 },
+        },
+      },
+    });
+
+    await writeCapacityState(
+      makeState({
+        accountId: "claude-max-1",
+        usageSnapshot: makeClaudeUsageSnapshot([
+          {
+            id: "claude-current-session",
+            label: "Current session usage",
+            kind: "percent_used",
+            status: "available",
+            value: 85,
+            maxValue: 100,
+            displayValue: "85%",
+            resetsAt: "2026-01-15T15:00:00Z",
+          },
+          {
+            id: "claude-weekly-all-models",
+            label: "Weekly limits - All models",
+            kind: "percent_used",
+            status: "available",
+            value: 85,
+            maxValue: 100,
+            displayValue: "85%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+          {
+            id: "claude-weekly-sonnet-only",
+            label: "Weekly limits - Sonnet only",
+            kind: "percent_used",
+            status: "available",
+            value: 10,
+            maxValue: 100,
+            displayValue: "10%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+        ]),
+      }),
+    );
+
+    await writeCapacityState(
+      makeState({
+        accountId: "claude-max-2",
+        usageSnapshot: makeClaudeUsageSnapshot([
+          {
+            id: "claude-current-session",
+            label: "Current session usage",
+            kind: "percent_used",
+            status: "available",
+            value: 40,
+            maxValue: 100,
+            displayValue: "40%",
+            resetsAt: "2026-01-15T15:00:00Z",
+          },
+          {
+            id: "claude-weekly-all-models",
+            label: "Weekly limits - All models",
+            kind: "percent_used",
+            status: "available",
+            value: 40,
+            maxValue: 100,
+            displayValue: "40%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+          {
+            id: "claude-weekly-sonnet-only",
+            label: "Weekly limits - Sonnet only",
+            kind: "percent_used",
+            status: "available",
+            value: 90,
+            maxValue: 100,
+            displayValue: "90%",
+            resetsAt: "2026-01-22T12:00:00Z",
+          },
+        ]),
+      }),
+    );
+
+    const accountId = await selectAccountForProject(
+      config,
+      "my-app",
+      {} as PluginRegistry,
+      [],
+    );
+
+    expect(accountId).toBe("claude-max-2");
   });
 });

@@ -680,11 +680,12 @@ describe("getSessionInfo", () => {
 describe("getUsageSnapshot", () => {
   const agent = create();
 
-  it("returns current-session and weekly usage dials from rate_limit_event lines", async () => {
+  it("returns current-session, shared weekly, and Sonnet-only weekly usage dials", async () => {
     const jsonl = [
       '{"type":"user","message":{"content":"hi"}}',
       '{"timestamp":"2026-03-10T12:00:00.000Z","type":"rate_limit_event","rate_limit_info":{"rateLimitType":"five_hour","utilization":0.25,"resetsAt":"2026-03-10T15:00:00.000Z"}}',
       '{"timestamp":"2026-03-10T12:00:01.000Z","type":"rate_limit_event","rate_limit_info":{"rateLimitType":"seven_day","utilization":0.6,"resetsAt":"2026-03-11T08:00:00.000Z"}}',
+      '{"timestamp":"2026-03-10T12:00:02.000Z","type":"rate_limit_event","rate_limit_info":{"rateLimitType":"seven_day_sonnet","utilization":0.1,"resetsAt":"2026-03-17T08:00:00.000Z"}}',
     ].join("\n");
 
     mockJsonlFiles(jsonl);
@@ -696,11 +697,13 @@ describe("getUsageSnapshot", () => {
     expect(snapshot?.dials.map((dial) => dial.id)).toEqual([
       "claude-current-session",
       "claude-weekly-all-models",
+      "claude-weekly-sonnet-only",
     ]);
-    expect(snapshot?.dials.map((dial) => dial.displayValue)).toEqual(["25%", "60%"]);
+    expect(snapshot?.dials.map((dial) => dial.displayValue)).toEqual(["25%", "60%", "10%"]);
     expect(snapshot?.dials.map((dial) => dial.resetsAt)).toEqual([
       "2026-03-10T15:00:00.000Z",
       "2026-03-11T08:00:00.000Z",
+      "2026-03-17T08:00:00.000Z",
     ]);
   });
 

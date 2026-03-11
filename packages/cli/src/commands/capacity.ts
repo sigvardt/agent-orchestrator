@@ -13,10 +13,12 @@ import type { Command } from "commander";
 import { loadConfig, type AccountCapacity } from "@syntese/core";
 import {
   computeAccountCapacity,
+  getActiveSessionsByAccount,
   getEffectiveAccounts,
+  refreshAccountUsageSnapshots,
   readCapacityState,
 } from "../lib/capacity-store.js";
-import { getSessionManager } from "../lib/create-session-manager.js";
+import { getRegistry, getSessionManager } from "../lib/create-session-manager.js";
 import { banner, padCol } from "../lib/format.js";
 
 // ─── Display Helpers ─────────────────────────────────────────────────────────
@@ -106,26 +108,13 @@ export function registerCapacity(program: Command): void {
         }
 
         // Get active sessions per accountId (count from session manager)
-        const activeSessionsByAccount = new Map<string, number>();
+        let activeSessionsByAccount = new Map<string, number>();
         try {
           const sm = await getSessionManager(config);
           const sessions = await sm.list();
-          for (const session of sessions) {
-            if (["working", "spawning", "idle", "ready"].includes(session.status)) {
-              const agentName = config.projects[session.projectId]?.agent ?? config.defaults.agent;
-              // Map to account using the same logic as resolveAccountForProject
-              let accountId = agentName;
-              if (config.accounts) {
-                for (const [id, acctCfg] of Object.entries(config.accounts)) {
-                  if (acctCfg.agent === agentName) {
-                    accountId = id;
-                    break;
-                  }
-                }
-              }
-              activeSessionsByAccount.set(accountId, (activeSessionsByAccount.get(accountId) ?? 0) + 1);
-            }
-          }
+          const registry = await getRegistry(config);
+          await refreshAccountUsageSnapshots(config, registry, sessions);
+          activeSessionsByAccount = getActiveSessionsByAccount(config, sessions);
         } catch {
           // Session manager unavailable — proceed with zero active sessions
         }

@@ -72,6 +72,11 @@ import {
   GLOBAL_PAUSE_UNTIL_KEY,
   parsePauseUntil,
 } from "./global-pause.js";
+import {
+  incrementAccountConsumed,
+  resolveAccountForProject,
+  selectAccountForProject,
+} from "./account-capacity.js";
 import { sessionFromMetadata } from "./utils/session-from-metadata.js";
 import { safeJsonParse, validateStatus } from "./utils/validation.js";
 
@@ -1162,6 +1167,36 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         ...(reusedOpenCodeSessionId ? { opencodeSessionId: reusedOpenCodeSessionId } : {}),
       },
     };
+    const selectedAgentName = plugins.agent.name;
+
+    const routingSessions = listAllSessions().flatMap(({ sessionName, projectId: sessionProjectId }) => {
+      const sessionProject = config.projects[sessionProjectId];
+      if (!sessionProject) {
+        return [] as Session[];
+      }
+
+      const raw = readMetadataRaw(getProjectSessionsDir(sessionProject), sessionName);
+      if (!raw) {
+        return [] as Session[];
+      }
+
+      return [metadataToSession(sessionName, raw)];
+    });
+
+    const accountId = await selectAccountForProject(
+      config,
+      spawnConfig.projectId,
+      registry,
+      routingSessions,
+      {
+        agent: selectedAgentName,
+        model: project.agentConfig?.model,
+      },
+    ).catch(() =>
+      resolveAccountForProject(config, spawnConfig.projectId, { agent: selectedAgentName }),
+    );
+
+    session.metadata["accountId"] = accountId;
 
     try {
       writeMetadata(sessionsDir, sessionId, {
@@ -1171,7 +1206,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         tmuxName, // Store tmux name for mapping
         issue: spawnConfig.issueId,
         project: spawnConfig.projectId,
-        agent: plugins.agent.name, // Persist agent name for lifecycle manager
+        agent: selectedAgentName, // Persist agent name for lifecycle manager
+        accountId,
         createdAt: new Date().toISOString(),
         runtimeHandle: JSON.stringify(handle),
         opencodeSessionId: reusedOpenCodeSessionId,
@@ -1198,6 +1234,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       if (Object.keys(session.metadata || {}).length > 0) {
         updateMetadata(sessionsDir, sessionId, session.metadata);
       }
+
+      void incrementAccountConsumed(accountId).catch(() => undefined);
     } catch (err) {
       // Clean up runtime and workspace on post-launch failure
       try {

@@ -117,6 +117,22 @@ export { asValidOpenCodeSessionId } from "./opencode-session-id.js";
 export { normalizeOrchestratorSessionStrategy } from "./orchestrator-session-strategy.js";
 export type { NormalizedOrchestratorSessionStrategy } from "./orchestrator-session-strategy.js";
 
+export {
+  readCapacityState,
+  writeCapacityState,
+  incrementAccountConsumed,
+  calibrateAccountConsumed,
+  computeAccountCapacity,
+  getEffectiveAccounts,
+  resolveAccountForProject,
+  getActiveSessionsByAccount,
+  persistAccountUsageSnapshot,
+  refreshAccountUsageSnapshots,
+  detectAccountModelFamily,
+  selectAccountForProject,
+} from "./account-capacity.js";
+export type { AccountCapacityState } from "./account-capacity.js";
+
 // Feedback tools — contracts, validation, and report storage
 export {
   FEEDBACK_TOOL_NAMES,

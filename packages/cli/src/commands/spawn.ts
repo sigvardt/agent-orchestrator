@@ -18,10 +18,6 @@ import { banner } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 import { ensureLifecycleWorker } from "../lib/lifecycle-service.js";
 import { preflight } from "../lib/preflight.js";
-import {
-  incrementAccountConsumed,
-  resolveAccountForProject,
-} from "../lib/capacity-store.js";
 
 interface SpawnClaimOptions {
   claimPr?: string;
@@ -95,12 +91,6 @@ async function spawnSession(
         ? `Session ${chalk.green(session.id)} created and claimed PR`
         : `Session ${chalk.green(session.id)} created`,
     );
-
-    // Track spawn in per-account capacity store (best-effort, non-blocking)
-    const accountId = resolveAccountForProject(config, projectId);
-    incrementAccountConsumed(accountId).catch(() => {
-      // Capacity tracking failure is non-fatal
-    });
 
     console.log(`  Worktree: ${chalk.dim(session.workspacePath ?? "-")}`);
     if (branchStr) console.log(`  Branch:   ${chalk.dim(branchStr)}`);

@@ -497,7 +497,8 @@ function createClaudeUsageDial(
 
 function extractUsageSnapshot(lines: JsonlLine[]): UsageSnapshot | null {
   let currentSessionInfo: ClaudeRateLimitInfo | null = null;
-  let weeklyInfo: ClaudeRateLimitInfo | null = null;
+  let weeklyAllModelsInfo: ClaudeRateLimitInfo | null = null;
+  let weeklySonnetInfo: ClaudeRateLimitInfo | null = null;
   let capturedAt: string | null = null;
 
   for (const line of lines) {
@@ -510,12 +511,14 @@ function extractUsageSnapshot(lines: JsonlLine[]): UsageSnapshot | null {
         currentSessionInfo = info;
         break;
       case "seven_day":
-        weeklyInfo = info;
+        weeklyAllModelsInfo = info;
+        break;
+      case "seven_day_sonnet":
+        weeklySonnetInfo = info;
         break;
       case "seven_day_opus":
-      case "seven_day_sonnet":
-        if (!weeklyInfo) {
-          weeklyInfo = info;
+        if (!weeklyAllModelsInfo) {
+          weeklyAllModelsInfo = info;
         }
         break;
       default:
@@ -527,8 +530,19 @@ function extractUsageSnapshot(lines: JsonlLine[]): UsageSnapshot | null {
     currentSessionInfo
       ? createClaudeUsageDial("claude-current-session", "Current session usage", currentSessionInfo)
       : null,
-    weeklyInfo
-      ? createClaudeUsageDial("claude-weekly-all-models", "Weekly limits - All models", weeklyInfo)
+    weeklyAllModelsInfo
+      ? createClaudeUsageDial(
+          "claude-weekly-all-models",
+          "Weekly limits - All models",
+          weeklyAllModelsInfo,
+        )
+      : null,
+    weeklySonnetInfo
+      ? createClaudeUsageDial(
+          "claude-weekly-sonnet-only",
+          "Weekly limits - Sonnet only",
+          weeklySonnetInfo,
+        )
       : null,
   ].filter((dial): dial is UsageDial => dial !== null);
 

@@ -72,6 +72,11 @@ const DIAL_TEMPLATES: Record<UsageProvider, UsageDialTemplate[]> = {
       label: "Weekly limits - All models",
       kind: "percent_used",
     },
+    {
+      id: "claude-weekly-sonnet-only",
+      label: "Weekly limits - Sonnet only",
+      kind: "percent_used",
+    },
   ],
 };
 

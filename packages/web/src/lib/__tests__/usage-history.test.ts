@@ -138,6 +138,17 @@ describe("estimateDialValue", () => {
     expect(result!.estimatedDial.isEstimated).toBe(true);
   });
 
+  it("estimates recovery for percent_used (claude-weekly-sonnet-only) rolling window", () => {
+    const dial = makePercentUsedDial("claude-weekly-sonnet-only", 70);
+    const windowMs = 7 * 24 * 60 * 60 * 1000;
+    const capturedAtMs = Date.now() - windowMs;
+
+    const result = estimateDialValue(dial, capturedAtMs, 10);
+    expect(result).not.toBeNull();
+    expect(result!.estimatedDial.value).toBe(0);
+    expect(result!.estimatedDial.isEstimated).toBe(true);
+  });
+
   it("clamps estimated value to [0, 100]", () => {
     const dial = makePercentRemainingDial("codex-5h", 98);
     // More than full window elapsed: should clamp at 100
