@@ -709,6 +709,12 @@ function formatCredits(balance: number): string {
   }).format(displayBalance);
 }
 
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
+}
+
 function formatPlanType(planType: string | null): string | null {
   if (!planType) return null;
   if (planType.toLowerCase() === "pro") {
@@ -739,7 +745,31 @@ function createPercentRemainingDial(
 
 function buildCodexUsageSnapshot(data: CodexSessionData): UsageSnapshot | null {
   if (data.rateLimits.size === 0 && !data.credits) {
-    return null;
+    // Fallback: no rate-limit data at all, but we may still have token counts.
+    // Emit an estimated dial so the dashboard moves out of the "AWAITING FIRST
+    // SNAPSHOT" state even when the Codex API omits rate-limit fields.
+    const totalTokens = data.inputTokens + data.outputTokens;
+    if (totalTokens === 0) {
+      return null;
+    }
+    return {
+      provider: "codex",
+      plan: formatPlanType(data.plan),
+      capturedAt: data.capturedAt ?? new Date().toISOString(),
+      dials: [
+        {
+          id: "codex-5h",
+          label: "5 hour usage limit",
+          kind: "absolute",
+          status: "available",
+          value: totalTokens,
+          maxValue: null,
+          displayValue: formatTokenCount(totalTokens) + " tokens",
+          isEstimated: true,
+          resetsAt: null,
+        },
+      ],
+    };
   }
 
   const dials = new Map<string, UsageDial>();
@@ -831,7 +861,27 @@ function buildCodexUsageSnapshot(data: CodexSessionData): UsageSnapshot | null {
   }
 
   if (dials.size === 0) {
-    return null;
+    // Fallback: no rate-limit data was populated (primary field values are null),
+    // but we may still have token-count data from the session. Emit an estimated
+    // dial so the dashboard moves out of the "AWAITING FIRST SNAPSHOT" state.
+    const totalTokens = data.inputTokens + data.outputTokens;
+    if (totalTokens > 0) {
+      dials.set("codex-5h", {
+        id: "codex-5h",
+        label: "5 hour usage limit",
+        kind: "absolute",
+        status: "available",
+        value: totalTokens,
+        maxValue: null,
+        displayValue: formatTokenCount(totalTokens) + " tokens",
+        isEstimated: true,
+        resetsAt: null,
+      });
+    }
+
+    if (dials.size === 0) {
+      return null;
+    }
   }
 
   const order = [

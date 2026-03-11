@@ -302,7 +302,17 @@ interface JsonlLine {
   timestamp?: string;
   type?: string;
   summary?: string;
-  message?: { content?: string; role?: string };
+  message?: {
+    content?: string | unknown[];
+    role?: string;
+    /** Token usage data present on assistant messages (Claude v2.x session format) */
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
+  };
   // Cost/usage fields
   costUSD?: number;
   usage?: {
@@ -548,6 +558,165 @@ function extractUsageSnapshot(lines: JsonlLine[]): UsageSnapshot | null {
 
   if (dials.length === 0) {
     return null;
+  }
+
+  return {
+    provider: "claude-code",
+    plan: null,
+    capturedAt: capturedAt ?? new Date().toISOString(),
+    dials,
+  };
+}
+
+// =============================================================================
+// Token-Based Usage Estimation (fallback when rate_limit_event is absent)
+// =============================================================================
+
+interface DailyModelTokens {
+  date: string;
+  tokensByModel: Record<string, number>;
+}
+
+interface StatsCache {
+  dailyModelTokens?: DailyModelTokens[];
+}
+
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
+}
+
+async function readClaudeStatsCache(): Promise<StatsCache | null> {
+  try {
+    const cachePath = join(homedir(), ".claude", "stats-cache.json");
+    const raw = await readFile(cachePath, "utf-8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    return parsed as StatsCache;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compute total tokens from the stats cache for the past 7 days.
+ * Optionally filters to Sonnet-family models only.
+ */
+function computeWeeklyTokensFromCache(cache: StatsCache | null, sonnetOnly: boolean): number {
+  if (!cache?.dailyModelTokens) return 0;
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const cutoff = sevenDaysAgo.toISOString().slice(0, 10);
+
+  let total = 0;
+  for (const entry of cache.dailyModelTokens) {
+    if (entry.date < cutoff) continue;
+    for (const [model, tokens] of Object.entries(entry.tokensByModel)) {
+      if (sonnetOnly && !model.toLowerCase().includes("sonnet")) continue;
+      total += typeof tokens === "number" ? tokens : 0;
+    }
+  }
+  return total;
+}
+
+/**
+ * Count output tokens from assistant messages in the parsed JSONL lines.
+ * Claude Code v2.x stores usage inside `message.usage` on assistant entries.
+ */
+function countSessionOutputTokens(lines: JsonlLine[]): number {
+  let total = 0;
+  for (const line of lines) {
+    // Primary: message.usage on assistant messages (Claude v2.x format)
+    const msgUsage = line.message?.usage;
+    if (msgUsage && typeof msgUsage.output_tokens === "number") {
+      total += msgUsage.output_tokens;
+      continue;
+    }
+    // Fallback: top-level usage field (older format)
+    if (line.usage && typeof line.usage.output_tokens === "number") {
+      total += line.usage.output_tokens;
+      continue;
+    }
+    // Flat outputTokens
+    if (typeof line.outputTokens === "number") {
+      total += line.outputTokens;
+    }
+  }
+  return total;
+}
+
+/**
+ * Build a token-count-based usage snapshot when no rate_limit_event entries
+ * are present in the session JSONL. This happens in interactive Claude Code
+ * sessions (rate_limit_event is only emitted in streaming/print mode).
+ *
+ * Returns absolute-kind dials with token counts. The values are estimates
+ * (marked isEstimated: true) since we don't know the exact subscription limits.
+ */
+async function extractTokenBasedSnapshot(lines: JsonlLine[]): Promise<UsageSnapshot | null> {
+  const sessionOutputTokens = countSessionOutputTokens(lines);
+  if (sessionOutputTokens === 0) {
+    return null;
+  }
+
+  let capturedAt: string | null = null;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (typeof lines[i]?.timestamp === "string") {
+      capturedAt = lines[i]!.timestamp!;
+      break;
+    }
+  }
+
+  const dials: UsageDial[] = [
+    {
+      id: "claude-current-session",
+      label: "Current session usage",
+      kind: "absolute",
+      status: "available",
+      value: sessionOutputTokens,
+      maxValue: null,
+      displayValue: formatTokenCount(sessionOutputTokens) + " out",
+      isEstimated: true,
+      estimationConfidence: 0.3,
+      resetsAt: null,
+    },
+  ];
+
+  // Add weekly dials from the stats cache if available.
+  const statsCache = await readClaudeStatsCache();
+  const weeklyAllModels = computeWeeklyTokensFromCache(statsCache, false);
+  const weeklySonnet = computeWeeklyTokensFromCache(statsCache, true);
+
+  if (weeklyAllModels > 0) {
+    dials.push({
+      id: "claude-weekly-all-models",
+      label: "Weekly limits - All models",
+      kind: "absolute",
+      status: "available",
+      value: weeklyAllModels,
+      maxValue: null,
+      displayValue: formatTokenCount(weeklyAllModels) + " tokens",
+      isEstimated: true,
+      estimationConfidence: 0.3,
+      resetsAt: null,
+    });
+  }
+
+  if (weeklySonnet > 0) {
+    dials.push({
+      id: "claude-weekly-sonnet-only",
+      label: "Weekly limits - Sonnet only",
+      kind: "absolute",
+      status: "available",
+      value: weeklySonnet,
+      maxValue: null,
+      displayValue: formatTokenCount(weeklySonnet) + " tokens",
+      isEstimated: true,
+      estimationConfidence: 0.3,
+      resetsAt: null,
+    });
   }
 
   return {
@@ -955,7 +1124,16 @@ function createClaudeCodeAgent(): Agent {
       const lines = await parseJsonlFileTail(sessionFile);
       if (lines.length === 0) return null;
 
-      return extractUsageSnapshot(lines);
+      // Primary: look for rate_limit_event entries (precise subscription data
+      // emitted by Claude Code in streaming/print mode).
+      const rateLimitSnapshot = extractUsageSnapshot(lines);
+      if (rateLimitSnapshot) return rateLimitSnapshot;
+
+      // Fallback: compute token-based estimates from assistant message usage.
+      // Interactive Claude Code sessions store usage inside message.usage rather
+      // than emitting rate_limit_event entries, so this fallback ensures the
+      // dashboard always shows data when sessions are active.
+      return extractTokenBasedSnapshot(lines);
     },
 
     async getRestoreCommand(session: Session, project: ProjectConfig): Promise<string | null> {

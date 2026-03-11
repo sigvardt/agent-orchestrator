@@ -1195,7 +1195,7 @@ describe("getUsageSnapshot", () => {
     expect(snapshot?.dials[0]?.displayValue).toBe("80%");
   });
 
-  it("returns null when no rate-limit payloads are present", async () => {
+  it("returns token-count fallback snapshot when rate-limit payloads are null but tokens exist", async () => {
     const sessionContent = jsonl(
       { type: "session_meta", cwd: "/workspace/test", model: "gpt-5-codex" },
       {
@@ -1209,6 +1209,30 @@ describe("getUsageSnapshot", () => {
           rate_limits: null,
         },
       },
+    );
+
+    mockReaddir.mockResolvedValue(["rollout-456.jsonl"]);
+    setupMockOpen(sessionContent);
+    setupMockStream(sessionContent);
+    mockStat.mockResolvedValue({ mtimeMs: 1000 });
+
+    const snapshot = await agent.getUsageSnapshot!(
+      makeSession({ workspacePath: "/workspace/test" }),
+    );
+
+    // Should fall back to token-count dial rather than returning null
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.provider).toBe("codex");
+    const tokenDial = snapshot?.dials.find((d) => d.id === "codex-5h");
+    expect(tokenDial).toBeDefined();
+    expect(tokenDial?.kind).toBe("absolute");
+    expect(tokenDial?.value).toBe(1250); // input + output tokens
+    expect(tokenDial?.isEstimated).toBe(true);
+  });
+
+  it("returns null when no rate-limit payloads and no token data", async () => {
+    const sessionContent = jsonl(
+      { type: "session_meta", cwd: "/workspace/test", model: "gpt-5-codex" },
     );
 
     mockReaddir.mockResolvedValue(["rollout-456.jsonl"]);

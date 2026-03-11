@@ -707,9 +707,115 @@ describe("getUsageSnapshot", () => {
     ]);
   });
 
-  it("returns null when no rate_limit_event lines exist", async () => {
+  it("returns null when no rate_limit_event lines exist and no usage data", async () => {
     mockJsonlFiles('{"type":"assistant","message":{"content":"done"}}');
     expect(await agent.getUsageSnapshot!(makeSession())).toBeNull();
+  });
+
+  describe("token-based fallback (no rate_limit_event)", () => {
+    it("returns estimated snapshot with current-session token dial from message.usage", async () => {
+      const jsonl = [
+        '{"type":"user","message":{"content":"write a function"}}',
+        '{"timestamp":"2026-03-10T12:00:00.000Z","type":"assistant","message":{"role":"assistant","content":"here you go","usage":{"input_tokens":500,"output_tokens":1200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}',
+      ].join("\n");
+
+      mockJsonlFiles(jsonl);
+
+      const snapshot = await agent.getUsageSnapshot!(makeSession());
+
+      expect(snapshot).not.toBeNull();
+      expect(snapshot?.provider).toBe("claude-code");
+      expect(snapshot?.dials.some((d) => d.id === "claude-current-session")).toBe(true);
+      const sessionDial = snapshot?.dials.find((d) => d.id === "claude-current-session");
+      expect(sessionDial?.kind).toBe("absolute");
+      expect(sessionDial?.value).toBe(1200);
+      expect(sessionDial?.isEstimated).toBe(true);
+      expect(sessionDial?.displayValue).toContain("out");
+    });
+
+    it("sums output tokens across multiple assistant messages", async () => {
+      const jsonl = [
+        '{"timestamp":"2026-03-10T11:00:00.000Z","type":"assistant","message":{"role":"assistant","content":"a","usage":{"input_tokens":100,"output_tokens":300}}}',
+        '{"timestamp":"2026-03-10T11:30:00.000Z","type":"assistant","message":{"role":"assistant","content":"b","usage":{"input_tokens":200,"output_tokens":700}}}',
+      ].join("\n");
+
+      mockJsonlFiles(jsonl);
+
+      const snapshot = await agent.getUsageSnapshot!(makeSession());
+      const sessionDial = snapshot?.dials.find((d) => d.id === "claude-current-session");
+
+      expect(sessionDial?.value).toBe(1000);
+    });
+
+    it("also accepts top-level outputTokens field", async () => {
+      const jsonl = [
+        '{"timestamp":"2026-03-10T12:00:00.000Z","type":"assistant","outputTokens":450}',
+      ].join("\n");
+
+      mockJsonlFiles(jsonl);
+
+      const snapshot = await agent.getUsageSnapshot!(makeSession());
+      const sessionDial = snapshot?.dials.find((d) => d.id === "claude-current-session");
+
+      expect(sessionDial?.value).toBe(450);
+      expect(sessionDial?.isEstimated).toBe(true);
+    });
+
+    it("includes weekly dials when stats-cache.json has data", async () => {
+      const sessionJsonl = [
+        '{"timestamp":"2026-03-10T12:00:00.000Z","type":"assistant","message":{"role":"assistant","content":"ok","usage":{"input_tokens":100,"output_tokens":500}}}',
+      ].join("\n");
+
+      const statsCache = JSON.stringify({
+        version: 2,
+        lastComputedDate: "2026-03-10",
+        dailyModelTokens: [
+          { date: "2026-03-08", tokensByModel: { "claude-sonnet-4-6": 1500, "claude-opus-4-6": 800 } },
+          { date: "2026-03-10", tokensByModel: { "claude-sonnet-4-6": 2000 } },
+        ],
+      });
+
+      // First call (readFile for JSONL file), subsequent calls return stats cache
+      mockReaddir.mockResolvedValue(["session-abc123.jsonl"]);
+      mockStat.mockResolvedValue({ mtimeMs: 1000, mtime: new Date(1000) });
+      mockReadFile.mockImplementation(async (path: string) => {
+        if (typeof path === "string" && path.includes("stats-cache")) {
+          return statsCache;
+        }
+        return sessionJsonl;
+      });
+
+      const snapshot = await agent.getUsageSnapshot!(makeSession());
+
+      expect(snapshot).not.toBeNull();
+      const weeklyAllDial = snapshot?.dials.find((d) => d.id === "claude-weekly-all-models");
+      const weeklySonnetDial = snapshot?.dials.find((d) => d.id === "claude-weekly-sonnet-only");
+
+      expect(weeklyAllDial).toBeDefined();
+      expect(weeklyAllDial?.kind).toBe("absolute");
+      expect(weeklyAllDial?.value).toBe(4300); // 1500+800+2000
+      expect(weeklyAllDial?.isEstimated).toBe(true);
+
+      expect(weeklySonnetDial).toBeDefined();
+      expect(weeklySonnetDial?.value).toBe(3500); // 1500+2000
+    });
+
+    it("rate_limit_event takes priority over token-based fallback", async () => {
+      const jsonl = [
+        '{"timestamp":"2026-03-10T12:00:00.000Z","type":"assistant","message":{"role":"assistant","content":"a","usage":{"output_tokens":999}}}',
+        '{"timestamp":"2026-03-10T12:00:01.000Z","type":"rate_limit_event","rate_limit_info":{"rateLimitType":"five_hour","utilization":0.25,"resetsAt":"2026-03-10T15:00:00.000Z"}}',
+      ].join("\n");
+
+      mockJsonlFiles(jsonl);
+
+      const snapshot = await agent.getUsageSnapshot!(makeSession());
+
+      // Should use rate_limit_event data (percent_used), not token fallback (absolute)
+      const sessionDial = snapshot?.dials.find((d) => d.id === "claude-current-session");
+      expect(sessionDial?.kind).toBe("percent_used");
+      expect(sessionDial?.value).toBe(25);
+      expect(sessionDial?.isEstimated).toBeFalsy();
+    });
   });
 
   it("falls back to the canonical workspace path for worktree sessions", async () => {
