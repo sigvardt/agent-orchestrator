@@ -115,9 +115,9 @@ update_ao_metadata() {
     */* | *..*) return 0 ;;
   esac
 
-  # Validate: ao_dir must be an absolute path under known ao directories or /tmp
+  # Validate: ao_dir must be an absolute path under known Syntese directories or /tmp
   case "\$ao_dir" in
-    "\$HOME"/.ao/* | "\$HOME"/.syntese/* | "\$HOME"/.agent-orchestrator/* | /tmp/*) ;;
+    "\$HOME"/.ao/* | "\$HOME"/.syntese/* | /tmp/*) ;;
     *) return 0 ;;
   esac
 

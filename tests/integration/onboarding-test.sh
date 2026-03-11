@@ -87,10 +87,10 @@ if [ ! -f syntese.yaml ]; then
 fi
 end_step "Step 5: Configuration validated"
 
-# Step 6: Start orchestrator (in background)
-start_step "Step 6: Start orchestrator"
+# Step 6: Start Syntese (in background)
+start_step "Step 6: Start Syntese"
 # Start in background and capture PID
-ao start --no-orchestrator &  # Only start dashboard, not the orchestrator session
+ao start --no-orchestrator &  # Only start the dashboard, not the Syntese session
 DASHBOARD_PID=$!
 
 # Wait for dashboard to be ready (max 30 seconds)
@@ -148,11 +148,11 @@ done
 
 end_step "Step 8: WebSocket servers verified"
 
-# Step 9: Verify orchestrator terminal page (end-to-end test)
-start_step "Step 9: Verify orchestrator terminal feature"
+# Step 9: Verify Syntese terminal page (end-to-end test)
+start_step "Step 9: Verify Syntese terminal feature"
 
-# Create orchestrator session first (so we have something to test)
-echo "  Creating test orchestrator session..."
+# Create the Syntese session first (so we have something to test)
+echo "  Creating test Syntese session..."
 tmux new-session -d -s test-project-orchestrator || true
 
 # Write minimal metadata
@@ -166,13 +166,13 @@ EOF
 
 # Test that the session detail page loads (where terminal would be)
 if ! curl -sf http://localhost:9000/sessions/test-project-orchestrator > /dev/null; then
-    fail_step "Step 9: Orchestrator session page failed to load"
+    fail_step "Step 9: Syntese session page failed to load"
 fi
 
 # Cleanup test session
 tmux kill-session -t test-project-orchestrator 2>/dev/null || true
 
-end_step "Step 9: Orchestrator terminal page accessible"
+end_step "Step 9: Syntese terminal page accessible"
 
 # Step 10: Cleanup
 start_step "Step 10: Cleanup"

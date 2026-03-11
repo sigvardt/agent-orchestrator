@@ -19,7 +19,8 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const projectName = getProjectName();
   // Use absolute to opt out of the layout's "%s | project" template
-  return { title: { absolute: `ao | ${projectName}` } };
+  const absoluteTitle = projectName === "Syntese" ? projectName : `Syntese | ${projectName}`;
+  return { title: { absolute: absoluteTitle } };
 }
 
 export default async function Home() {

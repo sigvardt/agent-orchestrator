@@ -89,9 +89,9 @@ export default function OrchestratorScreen({ navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Orchestrator Session Details */}
+      {/* Syntese Session Details */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Orchestrator</Text>
+        <Text style={styles.sectionTitle}>Syntese Session</Text>
         {orchestratorId && orchSession ? (
           <View style={[styles.orchDetailCard, { borderLeftColor: orchColor }]}>
             <View style={styles.orchHeaderRow}>
@@ -127,7 +127,7 @@ export default function OrchestratorScreen({ navigation }: Props) {
             <View style={styles.orchMessageRow}>
               <TextInput
                 style={styles.orchMessageInput}
-                placeholder="Send message to orchestrator..."
+                placeholder="Send message to Syntese..."
                 placeholderTextColor="#8b949e"
                 value={message}
                 onChangeText={setMessage}
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 12,
   },
-  // Orchestrator detail card
+  // Syntese detail card
   orchDetailCard: {
     backgroundColor: "#0d1117",
     borderWidth: 1,

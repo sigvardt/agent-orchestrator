@@ -3,7 +3,7 @@ import { loadConfig } from "@syntese/core";
 
 /**
  * Load the primary project name from config.
- * Falls back to "ao" if config is unavailable.
+ * Falls back to "Syntese" if config is unavailable.
  *
  * Wrapped with React.cache() to deduplicate filesystem reads
  * within a single server render pass (layout + page + icon all
@@ -15,10 +15,10 @@ export const getProjectName = cache((): string => {
     const firstKey = Object.keys(config.projects)[0];
     if (firstKey) {
       const name = config.projects[firstKey].name ?? firstKey;
-      return name || firstKey || "ao";
+      return name || firstKey || "Syntese";
     }
   } catch {
     // Config not available
   }
-  return "ao";
+  return "Syntese";
 });

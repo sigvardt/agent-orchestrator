@@ -1907,10 +1907,9 @@ describe("shell wrapper content", () => {
 
     it("validates ao_dir is an absolute path under expected locations", async () => {
       const content = await getWrapperContent("ao-metadata-helper.sh");
-      // Only allows paths under $HOME/.ao/, $HOME/.syntese/, $HOME/.agent-orchestrator/, or /tmp/
+      // Only allows paths under $HOME/.ao/, $HOME/.syntese/, or /tmp/
       expect(content).toContain('$HOME"/.ao/*');
       expect(content).toContain('$HOME"/.syntese/*');
-      expect(content).toContain('$HOME"/.agent-orchestrator/*');
       expect(content).toContain("/tmp/*");
     });
 

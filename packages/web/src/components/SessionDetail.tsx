@@ -109,7 +109,7 @@ async function askAgentToFix(
   }
 }
 
-// ── Orchestrator status strip ─────────────────────────────────────────
+// ── Syntese status strip ──────────────────────────────────────────────
 
 function OrchestratorStatusStrip({
   zones,
@@ -243,7 +243,7 @@ export function SessionDetail({
             >
               <path d="M15 18l-6-6 6-6" />
             </svg>
-            Orchestrator
+            Syntese
           </a>
           <span className="text-[var(--color-border-strong)]">/</span>
           <span className="font-[var(--font-mono)] text-[11px] text-[var(--color-text-tertiary)]">
@@ -258,13 +258,13 @@ export function SessionDetail({
                 border: `1px solid color-mix(in srgb, ${accentColor} 20%, transparent)`,
               }}
             >
-              orchestrator
+              Syntese
             </span>
           )}
         </div>
       </nav>
 
-      {/* Orchestrator status strip */}
+      {/* Syntese status strip */}
       {isOrchestrator && orchestratorZones && (
         <OrchestratorStatusStrip zones={orchestratorZones} createdAt={session.createdAt} />
       )}

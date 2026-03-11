@@ -5,7 +5,7 @@ services:
     build:
       context: ../..
       dockerfile: tests/integration/Dockerfile
-    container_name: ao-onboarding-test
+    container_name: syntese-onboarding-test
     command: /workspace/syntese/tests/integration/onboarding-test.sh
     environment:
       - NODE_ENV=test
@@ -14,7 +14,7 @@ services:
     volumes:
       - ../..:/workspace/syntese
     # Expose ports for debugging (optional)
-    # Use 9000/9001/9003 on host to avoid conflicts with orchestrator
+    # Use 9000/9001/9003 on host to avoid conflicts with Syntese dev services
     # Container still uses 9000/14800/14801 internally
     ports:
       - "9000:9000"   # Dashboard (host:container)

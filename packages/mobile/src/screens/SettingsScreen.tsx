@@ -33,7 +33,7 @@ export default function SettingsScreen({ navigation }: Props) {
     try {
       await scheduleNotification(
         {
-          id: "ao-test-session",
+          id: "syntese-test-session",
           projectId: "test",
           status: "needs_input",
           activity: "waiting_input",
@@ -66,7 +66,7 @@ export default function SettingsScreen({ navigation }: Props) {
     try {
       await scheduleNotification(
         {
-          id: "ao-test-session",
+          id: "syntese-test-session",
           projectId: "test",
           status: "mergeable",
           activity: "idle",
@@ -116,7 +116,7 @@ export default function SettingsScreen({ navigation }: Props) {
     try {
       await scheduleNotification(
         {
-          id: "ao-test-session",
+          id: "syntese-test-session",
           projectId: "test",
           status: "review_pending",
           activity: "idle",
@@ -188,7 +188,7 @@ export default function SettingsScreen({ navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Backend URL</Text>
           <Text style={styles.hint}>
-            Enter the URL where your AO dashboard is running.
+            Enter the URL where your Syntese dashboard is running.
           </Text>
           <Text style={styles.fieldLabel}>Dashboard API URL</Text>
           <TextInput
@@ -257,7 +257,7 @@ export default function SettingsScreen({ navigation }: Props) {
           <Step n="1" text="Install Tailscale on your Mac and phone (tailscale.com)" />
           <Step n="2" text="Sign in to the same Tailscale account on both devices" />
           <Step n="3" text="Find your Mac's Tailscale IP: run 'tailscale ip -4' in terminal (starts with 100.x)" />
-          <Step n="4" text="Make sure the orchestrator is running: pnpm build && pnpm dev" />
+          <Step n="4" text="Make sure Syntese is running: pnpm build && pnpm dev" />
           <Step n="5" text="Enter http://<TAILSCALE_IP>:3000 above and tap Save" />
           <Text style={styles.sectionDivider}>Alternative: Local Wi-Fi</Text>
           <Step n="1" text="Your phone must be on the same Wi-Fi as your Mac" />

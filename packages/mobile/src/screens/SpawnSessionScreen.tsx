@@ -58,7 +58,7 @@ export default function SpawnSessionScreen({ navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Spawn New Session</Text>
           <Text style={styles.hint}>
-            Create a new agent session. The orchestrator will assign an agent and workspace.
+            Create a new agent session. Syntese will assign an agent and workspace.
           </Text>
 
           <Text style={styles.fieldLabel}>Project ID *</Text>

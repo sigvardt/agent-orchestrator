@@ -195,7 +195,7 @@ describe("pollBacklog", () => {
       {
         labels: ["agent:in-progress"],
         removeLabels: ["agent:backlog"],
-        comment: "Claimed by agent orchestrator — session spawned.",
+        comment: "Claimed by Syntese — session spawned.",
       },
       expect.objectContaining({ tracker: { plugin: "github" } }),
     );
