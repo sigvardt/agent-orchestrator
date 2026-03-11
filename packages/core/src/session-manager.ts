@@ -114,6 +114,26 @@ function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Return configured env vars to exclude from runtime launch shells. */
+function getExcludedEnvironment(config: OrchestratorConfig): string[] {
+  return config.shellEnvironmentPolicy?.exclude ?? [];
+}
+
+/** Debug log gate for optional shell-environment tracing. */
+function isDebugLoggingEnabled(): boolean {
+  const value = process.env["SYNTESE_DEBUG"];
+  return value === "1" || value === "true";
+}
+
+/** Emit debug-level shell environment exclusion details for spawn/restore flows. */
+function logExcludedEnvironment(context: string, sessionId: string, excluded: string[]): void {
+  if (!isDebugLoggingEnabled() || excluded.length === 0) return;
+  process.stderr.write(
+    `[syntese:debug] shellEnvironmentPolicy exclude (${context}) session=${sessionId} vars=${excluded.join(",")}` +
+      "\n",
+  );
+}
+
 async function countPushedCommitsSince(workspacePath: string, sinceIso: string): Promise<number> {
   try {
     const { stdout } = await execFileAsync(
@@ -1173,11 +1193,14 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     try {
       const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
       const environment = plugins.agent.getEnvironment(agentLaunchConfig);
+      const excludeEnvironment = getExcludedEnvironment(config);
+      logExcludedEnvironment("spawn", sessionId, excludeEnvironment);
 
       handle = await plugins.runtime.create({
         sessionId: tmuxName ?? sessionId, // Use tmux name for runtime if available
         workspacePath,
         launchCommand,
+        excludeEnvironment,
         environment: {
           ...environment,
           ...getAccountEnvironment(resolvedAccount.accountId, resolvedAccount.account, {
@@ -1475,6 +1498,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
 
     const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
     const environment = plugins.agent.getEnvironment(agentLaunchConfig);
+    const excludeEnvironment = getExcludedEnvironment(config);
+    logExcludedEnvironment("spawn-orchestrator", sessionId, excludeEnvironment);
     const resolvedAccount = resolveAccount(config, {
       projectId: orchestratorConfig.projectId,
       agentName: plugins.agent.name,
@@ -1484,6 +1509,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       sessionId: tmuxName ?? sessionId,
       workspacePath: project.path,
       launchCommand,
+      excludeEnvironment,
       environment: {
         ...environment,
         ...getAccountEnvironment(resolvedAccount.accountId, resolvedAccount.account, {
@@ -2730,6 +2756,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     }
 
     const environment = plugins.agent.getEnvironment(agentLaunchConfig);
+    const excludeEnvironment = getExcludedEnvironment(config);
+    logExcludedEnvironment("restore", sessionId, excludeEnvironment);
 
     // 8. Create runtime (reuse tmuxName from metadata)
     const tmuxName = raw["tmuxName"];
@@ -2737,6 +2765,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       sessionId: tmuxName ?? sessionId,
       workspacePath,
       launchCommand,
+      excludeEnvironment,
       environment: {
         ...environment,
         ...getAccountEnvironment(resolvedAccount.accountId, resolvedAccount.account, {
