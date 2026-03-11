@@ -53,6 +53,10 @@ const BUILTIN_PLUGINS: Array<{ slot: PluginSlot; name: string; pkg: string }> = 
   { slot: "terminal", name: "web", pkg: "@syntese/plugin-terminal-web" },
 ];
 
+export function listBuiltinPluginNames(slot: PluginSlot): string[] {
+  return BUILTIN_PLUGINS.filter((plugin) => plugin.slot === slot).map((plugin) => plugin.name);
+}
+
 /** Extract plugin-specific config from orchestrator config */
 function extractPluginConfig(
   slot: PluginSlot,

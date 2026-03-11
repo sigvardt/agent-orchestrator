@@ -122,6 +122,20 @@ defaults:
   workspace: worktree
   notifiers: [desktop]
 
+agentPool:
+  accounts:
+    - id: codex-pro-1
+      agent: codex
+      model: gpt-5.4-xhigh
+      auth:
+        profile: personal-codex
+      limits:
+        quotaWindow: 5h
+        overageType: credits
+        overageEnabled: true
+        overageSpendCap: 50
+        apiKeyFallback: true
+
 projects:
   my-app:
     repo: owner/my-app
@@ -164,6 +178,8 @@ CI fails → agent gets the logs and fixes it. Reviewers request changes → age
 
 If a project needs live verification beyond CI, `verification.postPush` runs a project-defined command after each new pushed `HEAD`. `block-merge` prevents auto-merge and the dashboard merge action until that verification passes.
 
+Use `agentPool.accounts` when you need multiple subscriptions per agent type with isolated auth. Syntese stores each account under `~/.syntese/accounts/<id>/` and injects the matching CLI auth directory into each spawned session.
+
 See [`syntese.yaml.example`](syntese.yaml.example) for the full reference.
 
 ## CLI
@@ -171,6 +187,11 @@ See [`syntese.yaml.example`](syntese.yaml.example) for the full reference.
 ```bash
 syn status                              # Overview of all sessions
 syn spawn <project> [issue]             # Spawn an agent
+syn spawn <project> [issue] --account <id> # Spawn with isolated account auth
+syn accounts                            # List configured + implicit accounts
+syn accounts test <id>                  # Verify auth for one account
+syn accounts login <id>                 # Run account-specific login flow
+syn accounts status                     # Show which sessions use which account
 syn send <session> "Fix the tests"      # Send instructions
 syn session ls                          # List sessions
 syn session kill <session>              # Kill a session

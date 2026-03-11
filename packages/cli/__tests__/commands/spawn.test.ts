@@ -312,6 +312,36 @@ describe("spawn command", () => {
     });
   });
 
+  it("passes --account flag to sessionManager.spawn()", async () => {
+    const fakeSession: Session = {
+      id: "app-1",
+      projectId: "my-app",
+      status: "spawning",
+      activity: null,
+      branch: null,
+      issueId: null,
+      pr: null,
+      workspacePath: "/tmp/wt",
+      runtimeHandle: { id: "hash-app-1", runtimeName: "tmux", data: {} },
+      agentInfo: null,
+      createdAt: new Date(),
+      lastActivityAt: new Date(),
+      metadata: { accountId: "codex-pro-1" },
+    };
+
+    mockSessionManager.spawn.mockResolvedValue(fakeSession);
+
+    await program.parseAsync(["node", "test", "spawn", "my-app", "--account", "codex-pro-1"]);
+
+    expect(mockSessionManager.spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "my-app",
+        issueId: undefined,
+        account: "codex-pro-1",
+      }),
+    );
+  });
+
   it("rejects unknown project ID", async () => {
     await expect(program.parseAsync(["node", "test", "spawn", "nonexistent"])).rejects.toThrow(
       "process.exit(1)",

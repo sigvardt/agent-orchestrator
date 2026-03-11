@@ -22,6 +22,36 @@ defaults:
   workspace: worktree # worktree | clone | copy
   notifiers: [desktop] # desktop | slack | discord | webhook | email
 
+# Account registry for auth isolation across concurrent tmux sessions
+# Auth state is stored under ~/.syntese/accounts/<id>/
+# agentPool:
+#   accounts:
+#     - id: codex-pro-1
+#       agent: codex
+#       model: gpt-5.4-xhigh
+#       auth:
+#         profile: personal-codex
+#       limits:
+#         quotaWindow: 5h
+#         overageType: credits
+#         overageEnabled: true
+#         overageSpendCap: 50
+#         apiKeyFallback: true
+#     - id: claude-max-1
+#       agent: claude-code
+#       model: claude-opus-4
+#       auth:
+#         profile: company-claude
+#       limits:
+#         quotaWindow: 5h
+#         overageType: api-rates
+#         overageEnabled: true
+#         overageSpendCap: 100
+#
+# Login once per account: syn accounts login codex-pro-1
+# Test auth: syn accounts test codex-pro-1
+# Spawn with isolation: syn spawn my-app 123 --account codex-pro-1
+
 # Periodic progress snapshots for active sessions
 # progressChecks:
 #   enabled: true

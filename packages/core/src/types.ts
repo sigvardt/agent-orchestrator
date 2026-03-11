@@ -184,6 +184,8 @@ export interface SessionSpawnConfig {
   prompt?: string;
   /** Override the agent plugin for this session (e.g. "codex", "claude-code") */
   agent?: string;
+  /** Select a specific configured account for this session. */
+  account?: string;
   /** Override the OpenCode subagent for this session (e.g. "sisyphus", "oracle") */
   subagent?: string;
   /** Decomposition context — ancestor task chain (passed to prompt builder) */
@@ -1042,7 +1044,10 @@ export interface OrchestratorConfig {
   /** Periodic per-session progress snapshots */
   progressChecks: ProgressChecksConfig;
 
-  /** Per-account capacity configuration (optional; backward compatible) */
+  /** Account registry (new schema). */
+  agentPool?: AgentPoolConfig;
+
+  /** Per-account capacity/auth configuration (legacy normalized shape; backward compatible) */
   accounts?: Record<string, AccountConfig>;
 }
 
@@ -1050,12 +1055,34 @@ export interface OrchestratorConfig {
 // ACCOUNT CAPACITY
 // =============================================================================
 
+export interface AccountAuthConfig {
+  /** Human-readable auth profile or context label. */
+  profile?: string;
+}
+
+export interface AccountLimitsConfig {
+  /** Rolling quota window (e.g. "5h"). */
+  quotaWindow?: string;
+  /** Overage mode once the base quota is depleted. */
+  overageType?: "credits" | "api-rates";
+  /** Whether overage is allowed for this account. */
+  overageEnabled?: boolean;
+  /** Maximum spend cap for the overage period. */
+  overageSpendCap?: number;
+  /** Allow inheriting the process API key as a fallback for this account. */
+  apiKeyFallback?: boolean;
+}
+
 /** Account subscription/auth configuration */
 export interface AccountConfig {
   /** Agent type this account belongs to */
   agent: string;
   /** Model identifier, e.g. "claude-opus-4" */
   model?: string;
+  /** Auth context for this account. */
+  auth?: AccountAuthConfig;
+  /** Modern limits schema. */
+  limits?: AccountLimitsConfig;
   /** Base quota limits for the rolling window */
   baseQuota?: {
     /** Estimated total messages per window (e.g. 223 for Codex Pro) */
@@ -1070,6 +1097,15 @@ export interface AccountConfig {
     /** Maximum spend cap in dollars or credits */
     spendCap?: number;
   };
+}
+
+/** Account entry in `agentPool.accounts`. */
+export interface ConfiguredAccount extends AccountConfig {
+  id: string;
+}
+
+export interface AgentPoolConfig {
+  accounts?: ConfiguredAccount[];
 }
 
 /** Real-time headroom status for a single account */
@@ -1344,13 +1380,13 @@ export interface SessionMetadata {
   branch: string;
   status: string;
   tmuxName?: string; // Globally unique tmux session name (includes hash)
+  accountId?: string;
   issue?: string;
   pr?: string;
   prAutoDetect?: "on" | "off";
   summary?: string;
   project?: string;
   agent?: string; // Agent plugin name (e.g. "codex", "claude-code") — persisted for lifecycle
-  accountId?: string;
   createdAt?: string;
   runtimeHandle?: string;
   restoredAt?: string;

@@ -123,8 +123,6 @@ export {
   incrementAccountConsumed,
   calibrateAccountConsumed,
   computeAccountCapacity,
-  getEffectiveAccounts,
-  resolveAccountForProject,
   getActiveSessionsByAccount,
   persistAccountUsageSnapshot,
   refreshAccountUsageSnapshots,
@@ -173,6 +171,21 @@ export {
   getAccountDataDir,
   getAccountCapacityFile,
 } from "./paths.js";
+
+// Account registry + auth helpers
+export {
+  getConfiguredAccounts,
+  getEffectiveAccounts,
+  resolveAccount,
+  resolveAccountForProject,
+  parseQuotaWindowHours,
+  getAccountWindowHours,
+  getAccountOverageConfig,
+  getAccountEnvironment,
+  getAccountLoginCommand,
+  getAccountStatusCommand,
+} from "./accounts.js";
+export type { ResolvedAccount, AccountCommand, AccountEnvironmentOptions } from "./accounts.js";
 
 // Config generator — auto-generate config from repo URL
 export {

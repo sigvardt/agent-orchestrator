@@ -496,3 +496,126 @@ describe("Config Defaults", () => {
     expect(validated.projects.proj1.scm).toEqual({ plugin: "gitlab" });
   });
 });
+
+describe("Account Registry Config", () => {
+  it("accepts agentPool.accounts and normalizes them into config.accounts", () => {
+    const validated = validateConfig({
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+      agentPool: {
+        accounts: [
+          {
+            id: "codex-pro-1",
+            agent: "codex",
+            model: "gpt-5.4-xhigh",
+            auth: { profile: "joakim-chatgpt" },
+            limits: {
+              quotaWindow: "5h",
+              overageType: "credits",
+              overageEnabled: true,
+              overageSpendCap: 50,
+              apiKeyFallback: true,
+            },
+          },
+        ],
+      },
+    });
+
+    expect(validated.accounts?.["codex-pro-1"]).toMatchObject({
+      agent: "codex",
+      model: "gpt-5.4-xhigh",
+      auth: { profile: "joakim-chatgpt" },
+      limits: {
+        quotaWindow: "5h",
+        overageType: "credits",
+        overageEnabled: true,
+        overageSpendCap: 50,
+        apiKeyFallback: true,
+      },
+      baseQuota: {
+        estimatedTotal: 0,
+        windowHours: 5,
+      },
+      overage: {
+        enabled: true,
+        type: "credits",
+        spendCap: 50,
+      },
+    });
+    expect(validated.agentPool?.accounts).toHaveLength(1);
+    const configuredAccounts = validated.agentPool?.accounts ?? [];
+    expect(configuredAccounts[0]?.id).toBe("codex-pro-1");
+  });
+
+  it("keeps legacy top-level accounts working", () => {
+    const validated = validateConfig({
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+      accounts: {
+        "claude-max-1": {
+          agent: "claude-code",
+          auth: { profile: "company-claude" },
+        },
+      },
+    });
+
+    expect(validated.accounts?.["claude-max-1"]).toEqual({
+      agent: "claude-code",
+      auth: { profile: "company-claude" },
+    });
+    expect(validated.agentPool?.accounts).toEqual([
+      {
+        id: "claude-max-1",
+        agent: "claude-code",
+        auth: { profile: "company-claude" },
+      },
+    ]);
+  });
+
+  it("rejects duplicate account ids across legacy and agentPool config", () => {
+    expect(() =>
+      validateConfig({
+        projects: {
+          proj1: {
+            path: "/repos/test",
+            repo: "org/test",
+            defaultBranch: "main",
+          },
+        },
+        accounts: {
+          shared: { agent: "codex" },
+        },
+        agentPool: {
+          accounts: [{ id: "shared", agent: "codex" }],
+        },
+      }),
+    ).toThrow(/Duplicate account ID/);
+  });
+
+  it("rejects accounts with unknown agent plugins", () => {
+    expect(() =>
+      validateConfig({
+        projects: {
+          proj1: {
+            path: "/repos/test",
+            repo: "org/test",
+            defaultBranch: "main",
+          },
+        },
+        agentPool: {
+          accounts: [{ id: "mystery", agent: "unknown-agent" }],
+        },
+      }),
+    ).toThrow(/Unknown agent plugin/);
+  });
+});

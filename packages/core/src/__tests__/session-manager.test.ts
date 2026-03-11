@@ -13,7 +13,7 @@ import {
   reserveSessionId,
   updateMetadata,
 } from "../metadata.js";
-import { getSessionsDir, getProjectBaseDir, getWorktreesDir } from "../paths.js";
+import { getSessionsDir, getProjectBaseDir, getWorktreesDir, getAccountDataDir } from "../paths.js";
 import {
   SessionNotRestorableError,
   WorkspaceMissingError,
@@ -3168,6 +3168,83 @@ describe("spawnOrchestrator", () => {
     );
   });
 
+  it("injects the selected account environment and persists account metadata", async () => {
+    const codexAgent: Agent = {
+      ...mockAgent,
+      name: "codex",
+    };
+    const registryWithCodex: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return codexAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+    const configWithAccounts: OrchestratorConfig = {
+      ...config,
+      accounts: {
+        "codex-pro-1": { agent: "codex" },
+      },
+    };
+
+    const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
+    await sm.spawn({ projectId: "my-app", account: "codex-pro-1" });
+
+    const createCall = vi.mocked(mockRuntime.create).mock.calls[0]?.[0];
+    expect(createCall?.environment["CODEX_HOME"]).toBe(getAccountDataDir("codex-pro-1"));
+    expect(createCall?.environment["AO_ACCOUNT_ID"]).toBe("codex-pro-1");
+
+    const meta = readMetadataRaw(sessionsDir, "app-1");
+    expect(meta?.["accountId"]).toBe("codex-pro-1");
+  });
+
+  it("uses the same auth dir for shared accounts and different dirs for distinct accounts", async () => {
+    const codexAgent: Agent = {
+      ...mockAgent,
+      name: "codex",
+    };
+    const registryWithCodex: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return codexAgent;
+        if (slot === "workspace") return {
+          ...mockWorkspace,
+          create: vi.fn().mockImplementation(async ({ sessionId, branch, projectId }) => ({
+            path: `/tmp/mock-ws/${sessionId}`,
+            branch,
+            sessionId,
+            projectId,
+          })),
+        };
+        return null;
+      }),
+    };
+    const configWithAccounts: OrchestratorConfig = {
+      ...config,
+      accounts: {
+        "codex-pro-1": { agent: "codex" },
+        "codex-pro-2": { agent: "codex" },
+      },
+    };
+
+    const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
+    await sm.spawn({ projectId: "my-app", account: "codex-pro-1" });
+    await sm.spawn({ projectId: "my-app", account: "codex-pro-1" });
+    await sm.spawn({ projectId: "my-app", account: "codex-pro-2" });
+
+    const firstEnv = vi.mocked(mockRuntime.create).mock.calls[0]?.[0].environment;
+    const secondEnv = vi.mocked(mockRuntime.create).mock.calls[1]?.[0].environment;
+    const thirdEnv = vi.mocked(mockRuntime.create).mock.calls[2]?.[0].environment;
+
+    expect(firstEnv["CODEX_HOME"]).toBe(getAccountDataDir("codex-pro-1"));
+    expect(secondEnv["CODEX_HOME"]).toBe(getAccountDataDir("codex-pro-1"));
+    expect(thirdEnv["CODEX_HOME"]).toBe(getAccountDataDir("codex-pro-2"));
+    expect(firstEnv["CODEX_HOME"]).not.toBe(thirdEnv["CODEX_HOME"]);
+  });
+
   it("does not persist orchestratorSessionReused metadata on newly created sessions", async () => {
     const sm = createSessionManager({ config, registry: mockRegistry });
 
@@ -3437,6 +3514,50 @@ describe("restore", () => {
     expect(meta!["issue"]).toBe("TEST-1");
     expect(meta!["pr"]).toBe("https://github.com/org/my-app/pull/10");
     expect(meta!["createdAt"]).toBe("2025-01-01T00:00:00.000Z");
+  });
+
+  it("restores using the persisted account environment", async () => {
+    const claudeAgent: Agent = {
+      ...mockAgent,
+      name: "claude-code",
+    };
+    const registryWithClaude: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return claudeAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+    const configWithAccounts: OrchestratorConfig = {
+      ...config,
+      accounts: {
+        "claude-max-1": { agent: "claude-code" },
+      },
+    };
+    const wsPath = join(tmpDir, "ws-app-restore-account");
+    mkdirSync(wsPath, { recursive: true });
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "feat/TEST-1",
+      status: "killed",
+      project: "my-app",
+      agent: "claude-code",
+      accountId: "claude-max-1",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+
+    const sm = createSessionManager({ config: configWithAccounts, registry: registryWithClaude });
+    await sm.restore("app-1");
+
+    const createCall = vi.mocked(mockRuntime.create).mock.calls[0]?.[0];
+    expect(createCall?.environment["CLAUDE_CONFIG_DIR"]).toBe(getAccountDataDir("claude-max-1"));
+    expect(createCall?.environment["AO_ACCOUNT_ID"]).toBe("claude-max-1");
+
+    const meta = readMetadataRaw(sessionsDir, "app-1");
+    expect(meta?.["accountId"]).toBe("claude-max-1");
   });
 
   it("continues restore even if old runtime destroy fails", async () => {

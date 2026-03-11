@@ -53,6 +53,7 @@ async function spawnSession(
   issueId?: string,
   openTab?: boolean,
   agent?: string,
+  account?: string,
   claimOptions?: SpawnClaimOptions,
 ): Promise<string> {
   const spinner = ora("Creating session").start();
@@ -65,6 +66,7 @@ async function spawnSession(
       projectId,
       issueId,
       agent,
+      account,
     });
 
     let branchStr = session.branch ?? "";
@@ -127,6 +129,7 @@ export function registerSpawn(program: Command): void {
     .argument("[issue]", "Issue identifier (e.g. INT-1234, #42) - must exist in tracker")
     .option("--open", "Open session in terminal tab")
     .option("--agent <name>", "Override the agent plugin (e.g. codex, claude-code)")
+    .option("--account <id>", "Use a specific configured account for this session")
     .option("--claim-pr <pr>", "Immediately claim an existing PR for the spawned session")
     .option("--assign-on-github", "Assign the claimed PR to the authenticated GitHub user")
     .option("--decompose", "Decompose issue into subtasks before spawning")
@@ -138,6 +141,7 @@ export function registerSpawn(program: Command): void {
         opts: {
           open?: boolean;
           agent?: string;
+          account?: string;
           claimPr?: string;
           assignOnGithub?: boolean;
           decompose?: boolean;
@@ -196,7 +200,15 @@ export function registerSpawn(program: Command): void {
 
             if (leaves.length <= 1) {
               console.log(chalk.yellow("Task is atomic — spawning directly."));
-              await spawnSession(config, projectId, issueId, opts.open, opts.agent, claimOptions);
+              await spawnSession(
+                config,
+                projectId,
+                issueId,
+                opts.open,
+                opts.agent,
+                opts.account,
+                claimOptions,
+              );
             } else {
               // Create child issues and spawn sessions with lineage context
               const sm = await getSessionManager(config);
@@ -212,6 +224,7 @@ export function registerSpawn(program: Command): void {
                     lineage: leaf.lineage,
                     siblings,
                     agent: opts.agent,
+                    account: opts.account,
                   });
                   console.log(`  ${chalk.green("✓")} ${session.id} — ${leaf.description}`);
                 } catch (err) {
@@ -223,7 +236,15 @@ export function registerSpawn(program: Command): void {
               }
             }
           } else {
-            await spawnSession(config, projectId, issueId, opts.open, opts.agent, claimOptions);
+            await spawnSession(
+              config,
+              projectId,
+              issueId,
+              opts.open,
+              opts.agent,
+              opts.account,
+              claimOptions,
+            );
           }
         } catch (err) {
           console.error(chalk.red(`✗ ${err instanceof Error ? err.message : String(err)}`));
@@ -278,8 +299,14 @@ export function registerBatchSpawn(program: Command): void {
       const existingSessions = await sm.list(projectId);
       const existingIssueMap = new Map(
         existingSessions
-          .filter((s) => s.issueId && !TERMINAL_STATUSES.has(s.status))
-          .map((s) => [s.issueId!.toLowerCase(), s.id]),
+          .filter(
+            (
+              session,
+            ): session is typeof session & {
+              issueId: string;
+            } => Boolean(session.issueId) && !TERMINAL_STATUSES.has(session.status),
+          )
+          .map((session) => [session.issueId.toLowerCase(), session.id]),
       );
 
       for (const issue of issues) {

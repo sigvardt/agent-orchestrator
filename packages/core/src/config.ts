@@ -18,7 +18,9 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { PRIMARY_CLI_COMMAND } from "./cli-command.js";
 import type { OrchestratorConfig } from "./types.js";
+import { parseQuotaWindowHours } from "./accounts.js";
 import { generateSessionPrefix } from "./paths.js";
+import { listBuiltinPluginNames } from "./plugin-registry.js";
 
 const CONFIG_FILENAMES = [
   "syntese.yaml",
@@ -38,6 +40,9 @@ const HOME_CONFIG_PATHS = [
 
 const MISSING_CONFIG_ERROR =
   `No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run \`${PRIMARY_CLI_COMMAND} init\` to create one.`;
+
+const ACCOUNT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+const KNOWN_ACCOUNT_AGENTS = new Set(listBuiltinPluginNames("agent"));
 
 function inferScmPlugin(project: {
   repo: string;
@@ -227,11 +232,35 @@ const AccountOverageSchema = z.object({
   spendCap: z.number().nonnegative().optional(),
 });
 
+const AccountAuthSchema = z.object({
+  profile: z.string().min(1).optional(),
+});
+
+const AccountLimitsSchema = z.object({
+  quotaWindow: z.string().min(1).optional(),
+  overageType: z.enum(["credits", "api-rates"]).optional(),
+  overageEnabled: z.boolean().optional(),
+  overageSpendCap: z.number().nonnegative().optional(),
+  apiKeyFallback: z.boolean().optional(),
+});
+
 const AccountConfigSchema = z.object({
   agent: z.string(),
   model: z.string().optional(),
+  auth: AccountAuthSchema.optional(),
+  limits: AccountLimitsSchema.optional(),
   baseQuota: AccountBaseQuotaSchema.optional(),
   overage: AccountOverageSchema.optional(),
+});
+
+const ConfiguredAccountSchema = AccountConfigSchema.extend({
+  id: z
+    .string()
+    .regex(ACCOUNT_ID_PATTERN, "account id must match [a-zA-Z0-9][a-zA-Z0-9_-]*"),
+});
+
+const AgentPoolConfigSchema = z.object({
+  accounts: z.array(ConfiguredAccountSchema).default([]),
 });
 
 const OrchestratorConfigSchema = z.object({
@@ -250,8 +279,81 @@ const OrchestratorConfigSchema = z.object({
   }),
   reactions: z.record(ReactionConfigSchema).default({}),
   progressChecks: ProgressChecksSchema.default({}),
+  agentPool: AgentPoolConfigSchema.optional(),
   accounts: z.record(AccountConfigSchema).optional(),
 });
+
+function normalizeAccounts(config: OrchestratorConfig): OrchestratorConfig {
+  const normalized: Record<string, NonNullable<OrchestratorConfig["accounts"]>[string]> = {};
+  const configuredAccounts = config.agentPool?.accounts ?? [];
+
+  const register = (accountId: string, account: NonNullable<OrchestratorConfig["accounts"]>[string]): void => {
+    if (!ACCOUNT_ID_PATTERN.test(accountId)) {
+      throw new Error(
+        `Invalid account ID '${accountId}': must match [a-zA-Z0-9][a-zA-Z0-9_-]*`,
+      );
+    }
+
+    if (normalized[accountId]) {
+      throw new Error(`Duplicate account ID detected: '${accountId}'`);
+    }
+
+    if (!KNOWN_ACCOUNT_AGENTS.has(account.agent)) {
+      throw new Error(
+        `Unknown agent plugin for account '${accountId}': '${account.agent}'. Known agents: ${[...KNOWN_ACCOUNT_AGENTS].join(", ")}`,
+      );
+    }
+
+    const windowHours =
+      account.baseQuota?.windowHours ?? parseQuotaWindowHours(account.limits?.quotaWindow) ?? undefined;
+    const baseQuota = account.baseQuota
+      ? {
+          ...account.baseQuota,
+          ...(windowHours !== undefined ? { windowHours } : {}),
+        }
+      : account.limits?.quotaWindow && windowHours !== undefined
+        ? {
+            estimatedTotal: 0,
+            windowHours,
+          }
+        : undefined;
+
+    normalized[accountId] = {
+      ...account,
+      ...(baseQuota ? { baseQuota } : {}),
+      ...(account.overage
+        ? {}
+        : account.limits?.overageEnabled
+          ? {
+              overage: {
+                enabled: true,
+                type: account.limits.overageType,
+                spendCap: account.limits.overageSpendCap,
+              },
+            }
+          : {}),
+    };
+  };
+
+  for (const [accountId, account] of Object.entries(config.accounts ?? {})) {
+    register(accountId, account);
+  }
+
+  for (const configuredAccount of configuredAccounts) {
+    const { id, ...account } = configuredAccount;
+    register(id, account);
+  }
+
+  config.accounts = Object.keys(normalized).length > 0 ? normalized : undefined;
+  config.agentPool =
+    Object.keys(normalized).length > 0
+      ? {
+          accounts: Object.entries(normalized).map(([id, account]) => ({ id, ...account })),
+        }
+      : undefined;
+
+  return config;
+}
 
 // =============================================================================
 // CONFIG LOADING
@@ -569,6 +671,7 @@ export function validateConfig(raw: unknown): OrchestratorConfig {
   const validated = OrchestratorConfigSchema.parse(raw);
 
   let config = validated as OrchestratorConfig;
+  config = normalizeAccounts(config);
   config = expandPaths(config);
   config = applyProjectDefaults(config);
   config = applyDefaultReactions(config);
