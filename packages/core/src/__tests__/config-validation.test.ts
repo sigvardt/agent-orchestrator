@@ -2,7 +2,7 @@
  * Unit tests for config validation (project uniqueness, prefix collisions).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { validateConfig } from "../config.js";
 
 describe("Config Validation - Project Uniqueness", () => {
@@ -617,5 +617,66 @@ describe("Account Registry Config", () => {
         },
       }),
     ).toThrow(/Unknown agent plugin/);
+  });
+});
+
+describe("Shell Environment Policy", () => {
+  const baseConfig = {
+    projects: {
+      proj1: {
+        path: "/repos/test",
+        repo: "org/test",
+        defaultBranch: "main",
+      },
+    },
+  };
+
+  it("accepts a valid shellEnvironmentPolicy.exclude list", () => {
+    const validated = validateConfig({
+      ...baseConfig,
+      shellEnvironmentPolicy: {
+        exclude: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"],
+      },
+    });
+
+    expect(validated.shellEnvironmentPolicy?.exclude).toEqual([
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+    ]);
+  });
+
+  it("defaults exclude to an empty array when policy object is present", () => {
+    const validated = validateConfig({
+      ...baseConfig,
+      shellEnvironmentPolicy: {},
+    });
+
+    expect(validated.shellEnvironmentPolicy?.exclude).toEqual([]);
+  });
+
+  it("keeps backward compatibility when shellEnvironmentPolicy is missing", () => {
+    const validated = validateConfig(baseConfig);
+    expect(validated.shellEnvironmentPolicy).toBeUndefined();
+  });
+
+  it("warns when exclude entries are non-standard env var names", () => {
+    const emitWarningSpy = vi.spyOn(process, "emitWarning").mockImplementation(() => undefined);
+
+    validateConfig({
+      ...baseConfig,
+      shellEnvironmentPolicy: {
+        exclude: ["OPENAI_API_KEY", "bad-key", "with space"],
+      },
+    });
+
+    expect(emitWarningSpy).toHaveBeenCalledWith(
+      expect.stringContaining("shellEnvironmentPolicy.exclude contains non-standard env var names"),
+      expect.objectContaining({
+        code: "SYNTESE_SHELL_ENV_POLICY_INVALID_EXCLUDE",
+        type: "SynteseConfigWarning",
+      }),
+    );
+
+    emitWarningSpy.mockRestore();
   });
 });

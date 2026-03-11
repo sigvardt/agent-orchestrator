@@ -305,6 +305,25 @@ describe("spawn", () => {
     expect(mockRuntime.create).toHaveBeenCalled();
   });
 
+  it("passes shellEnvironmentPolicy exclusions to runtime.create", async () => {
+    const configWithPolicy: OrchestratorConfig = {
+      ...config,
+      shellEnvironmentPolicy: {
+        exclude: ["OPENAI_API_KEY", "AGENT_VAR"],
+      },
+    };
+
+    const sm = createSessionManager({ config: configWithPolicy, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app" });
+
+    expect(mockRuntime.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludeEnvironment: ["OPENAI_API_KEY", "AGENT_VAR"],
+        environment: expect.objectContaining({ AGENT_VAR: "1" }),
+      }),
+    );
+  });
+
   it("blocks spawn while the project is globally paused", async () => {
     writeMetadata(sessionsDir, "app-orchestrator", {
       worktree: join(tmpDir, "my-app"),
@@ -2724,6 +2743,24 @@ describe("spawnOrchestrator", () => {
     expect(session.workspacePath).toBe(join(tmpDir, "my-app"));
   });
 
+  it("passes shellEnvironmentPolicy exclusions when spawning orchestrator runtime", async () => {
+    const configWithPolicy: OrchestratorConfig = {
+      ...config,
+      shellEnvironmentPolicy: {
+        exclude: ["OPENAI_API_KEY"],
+      },
+    };
+
+    const sm = createSessionManager({ config: configWithPolicy, registry: mockRegistry });
+    await sm.spawnOrchestrator({ projectId: "my-app" });
+
+    expect(mockRuntime.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludeEnvironment: ["OPENAI_API_KEY"],
+      }),
+    );
+  });
+
   it("writes metadata with proper fields", async () => {
     const sm = createSessionManager({ config, registry: mockRegistry });
 
@@ -3626,6 +3663,35 @@ describe("restore", () => {
     expect(meta!["issue"]).toBe("TEST-1");
     expect(meta!["pr"]).toBe("https://github.com/org/my-app/pull/10");
     expect(meta!["createdAt"]).toBe("2025-01-01T00:00:00.000Z");
+  });
+
+  it("passes shellEnvironmentPolicy exclusions when restoring runtime", async () => {
+    const wsPath = join(tmpDir, "ws-app-restore-policy");
+    mkdirSync(wsPath, { recursive: true });
+
+    const configWithPolicy: OrchestratorConfig = {
+      ...config,
+      shellEnvironmentPolicy: {
+        exclude: ["OPENAI_API_KEY"],
+      },
+    };
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "feat/TEST-1",
+      status: "killed",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+
+    const sm = createSessionManager({ config: configWithPolicy, registry: mockRegistry });
+    await sm.restore("app-1");
+
+    expect(mockRuntime.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludeEnvironment: ["OPENAI_API_KEY"],
+      }),
+    );
   });
 
   it("restores using the persisted account environment", async () => {

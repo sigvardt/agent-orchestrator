@@ -156,6 +156,94 @@ describe("runtime.create()", () => {
     );
   });
 
+  it("unsets excluded variables before sending launch command", async () => {
+    const runtime = create();
+
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+
+    await runtime.create({
+      sessionId: "unset-before-launch",
+      workspacePath: "/tmp/ws",
+      launchCommand: "claude --session abc",
+      environment: {},
+      excludeEnvironment: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"],
+    });
+
+    expect(mockExecFileCustom).toHaveBeenNthCalledWith(
+      2,
+      "tmux",
+      [
+        "send-keys",
+        "-t",
+        "unset-before-launch",
+        "unset -- 'OPENAI_API_KEY' 'ANTHROPIC_API_KEY'",
+        "Enter",
+      ],
+      expectedTmuxOptions,
+    );
+    expect(mockExecFileCustom).toHaveBeenNthCalledWith(
+      3,
+      "tmux",
+      ["send-keys", "-t", "unset-before-launch", "claude --session abc", "Enter"],
+      expectedTmuxOptions,
+    );
+    expect(mockSleep).toHaveBeenCalledWith(100);
+  });
+
+  it("skips unset command when excludeEnvironment is empty", async () => {
+    const runtime = create();
+
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+
+    await runtime.create({
+      sessionId: "unset-empty",
+      workspacePath: "/tmp/ws",
+      launchCommand: "bash",
+      environment: {},
+      excludeEnvironment: [],
+    });
+
+    expect(mockExecFileCustom).toHaveBeenCalledTimes(2);
+    expect(mockExecFileCustom).toHaveBeenNthCalledWith(
+      2,
+      "tmux",
+      ["send-keys", "-t", "unset-empty", "bash", "Enter"],
+      expectedTmuxOptions,
+    );
+  });
+
+  it("keeps quoted exclude names safe in unset command", async () => {
+    const runtime = create();
+
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+
+    await runtime.create({
+      sessionId: "unset-quoted",
+      workspacePath: "/tmp/ws",
+      launchCommand: "bash",
+      environment: {},
+      excludeEnvironment: ["BAD NAME", "MIXED'QUOTE"],
+    });
+
+    expect(mockExecFileCustom).toHaveBeenNthCalledWith(
+      2,
+      "tmux",
+      [
+        "send-keys",
+        "-t",
+        "unset-quoted",
+        "unset -- 'BAD NAME' 'MIXED'\\''QUOTE'",
+        "Enter",
+      ],
+      expectedTmuxOptions,
+    );
+  });
+
   it("cleans up session if send-keys fails", async () => {
     const runtime = create();
 
