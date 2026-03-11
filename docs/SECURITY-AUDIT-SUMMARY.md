@@ -313,7 +313,7 @@ Finding: OpenClaw token in commit 0393ab70 (documented)
 - [ ] Verify all historical secrets have been rotated
 - [ ] Confirm no production secrets in git history
 - [ ] Add security badge to README
-- [ ] Set up security@composio.dev email alias
+- [ ] Set up security contact email
 - [ ] Enable GitHub security features:
   - [ ] Dependabot alerts
   - [ ] Code scanning

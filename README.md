@@ -1,9 +1,7 @@
 <h1 align="center">Syntese — The Orchestration Layer for Parallel AI Agents</h1>
 
 <p align="center">
-<a href="https://platform.composio.dev/?utm_source=Github&utm_medium=Banner&utm_content=Syntese">
-  <img width="800" alt="Syntese banner" src="docs/assets/agent_orchestrator_banner.png">
-</a>
+  <img width="800" alt="Syntese banner" src="docs/assets/syntese_banner.png">
 </p>
 
 <div align="center">
@@ -31,13 +29,13 @@ Use `syn` as the primary CLI command. `syntese` and `ao` are also available as a
 ## See it in action
 
 <a href="https://x.com/agent_wrapper/status/2026329204405723180">
-  <img src="docs/assets/demo-video-tweet.png" alt="Syntese demo — AI agents building their own orchestrator" width="560">
+  <img src="docs/assets/demo-video-card.png" alt="Syntese demo — AI agents building their own orchestrator" width="560">
 </a>
 <br><br>
 <a href="https://x.com/agent_wrapper/status/2026329204405723180"><img src="docs/assets/btn-watch-demo.png" alt="Watch the Demo on X" height="48"></a>
 <br><br><br>
 <a href="https://x.com/agent_wrapper/status/2025986105485733945">
-  <img src="docs/assets/article-tweet.png" alt="The Self-Improving AI System That Built Itself" width="560">
+  <img src="docs/assets/article-card.png" alt="The Self-Improving AI System That Built Itself" width="560">
 </a>
 <br><br>
 <a href="https://x.com/agent_wrapper/status/2025986105485733945"><img src="docs/assets/btn-read-article.png" alt="Read the Full Article on X" height="48"></a>
@@ -106,7 +104,7 @@ Eight slots. Every abstraction is swappable.
 | Workspace | worktree | clone |
 | Tracker | github | linear |
 | SCM | github | — |
-| Notifier | desktop | slack, composio, webhook |
+| Notifier | desktop | slack, webhook |
 | Terminal | iterm2 | web |
 | Lifecycle | core | — |
 
@@ -175,6 +173,8 @@ syn session restore <session>           # Revive a crashed agent
 syn dashboard                           # Open web dashboard (dev mode)
 syn services install|start|stop|status  # Supervised dashboard/ws runtime
 ```
+
+`syntese` and `ao` are also available as command aliases.
 
 ## Supervised Runtime (Recommended)
 
