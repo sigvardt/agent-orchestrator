@@ -2,7 +2,7 @@
 
 This directory contains example configurations for common use cases.
 
-`ao` remains the backward-compatible CLI alias, so the examples below continue to use `ao`.
+Use `syn` as the primary CLI command. `syntese` and `ao` are also available as aliases.
 
 ## Quick Start
 
@@ -11,7 +11,7 @@ Copy an example and customize:
 ```bash
 cp examples/simple-github.yaml syntese.yaml
 nano syntese.yaml  # edit as needed
-ao spawn my-app ISSUE-123
+syn spawn my-app ISSUE-123
 ```
 
 ## Examples
@@ -108,8 +108,8 @@ Add these to your shell profile (`~/.zshrc` or `~/.bashrc`) to persist them.
 After copying an example:
 
 1. **Edit the config** - Update repo paths, team IDs, etc.
-2. **Validate** - Run `ao start` to check for config errors
-3. **Spawn an agent** - Try `ao spawn project-id ISSUE-123`
-4. **Monitor** - Use `ao status` or open the dashboard (default http://localhost:3000, configurable via `port:` in config)
+2. **Validate** - Run `syn start` to check for config errors
+3. **Spawn an agent** - Try `syn spawn project-id ISSUE-123`
+4. **Monitor** - Use `syn status` or open the dashboard (default http://localhost:3000, configurable via `port:` in config)
 
 See [SETUP.md](../SETUP.md) for detailed configuration reference and troubleshooting.

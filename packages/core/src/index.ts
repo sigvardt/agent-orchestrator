@@ -71,6 +71,7 @@ export type { VerificationEvaluation, VerificationExecution } from "./verificati
 // Prompt builder — layered prompt composition
 export { buildPrompt, BASE_AGENT_PROMPT } from "./prompt-builder.js";
 export type { PromptBuildConfig } from "./prompt-builder.js";
+export { PRIMARY_CLI_COMMAND, CLI_ALIASES } from "./cli-command.js";
 
 // Decomposer — LLM-driven task decomposition
 export {

@@ -24,6 +24,7 @@ import {
   generateConfigFromUrl,
   configToYaml,
   normalizeOrchestratorSessionStrategy,
+  PRIMARY_CLI_COMMAND,
   type OrchestratorConfig,
   type ProjectConfig,
   type ParsedRepoUrl,
@@ -88,7 +89,7 @@ function resolveProject(
 
   // Multiple projects, no argument — error
   throw new Error(
-    `Multiple projects configured. Specify which one to start:\n  ${projectIds.map((id) => `ao start ${id}`).join("\n  ")}`,
+    `Multiple projects configured. Specify which one to start:\n  ${projectIds.map((id) => `${PRIMARY_CLI_COMMAND} start ${id}`).join("\n  ")}`,
   );
 }
 
@@ -415,7 +416,7 @@ export function registerStart(program: Command): void {
           if (err instanceof Error) {
             if (err.message.includes("No syntese.yaml found")) {
               console.error(chalk.red("\nNo config found. Run:"));
-              console.error(chalk.cyan("  ao init\n"));
+              console.error(chalk.cyan(`  ${PRIMARY_CLI_COMMAND} init\n`));
             } else {
               console.error(chalk.red("\nError:"), err.message);
             }

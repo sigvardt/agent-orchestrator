@@ -140,14 +140,25 @@ cd packages/cli
 npm link
 cd "$REPO_ROOT"
 
-# ─── Verify ao is in PATH ────────────────────────────────────────────────────
+# ─── Verify syn + aliases are in PATH ────────────────────────────────────────
 
 echo ""
-if command -v ao &> /dev/null; then
-  echo "[ok] 'ao' command is available in PATH"
-else
+MISSING_COMMANDS=()
+for cmd in syn syntese ao; do
+  if command -v "$cmd" &> /dev/null; then
+    echo "[ok] '$cmd' command is available in PATH"
+    "$cmd" --version >/dev/null 2>&1 || {
+      echo "WARNING: '$cmd' is in PATH but failed to run."
+      MISSING_COMMANDS+=("$cmd")
+    }
+  else
+    MISSING_COMMANDS+=("$cmd")
+  fi
+done
+
+if [ ${#MISSING_COMMANDS[@]} -gt 0 ]; then
   NPM_BIN="$(npm bin -g 2>/dev/null || npm config get prefix)/bin"
-  echo "WARNING: 'ao' is not in your PATH."
+  echo "WARNING: Missing or broken CLI commands: ${MISSING_COMMANDS[*]}"
   echo "  Add this to your shell profile (~/.zshrc or ~/.bashrc):"
   echo ""
   echo "    export PATH=\"$NPM_BIN:\$PATH\""
@@ -160,8 +171,11 @@ fi
 echo ""
 echo "Setup complete!"
 echo ""
+echo "Primary CLI: syn"
+echo "Aliases: syntese, ao"
+echo ""
 echo "Next steps:"
 echo "  1. cd /path/to/your-project"
-echo "  2. ao init --auto"
-echo "  3. ao start"
+echo "  2. syn init --auto"
+echo "  3. syn start"
 echo ""

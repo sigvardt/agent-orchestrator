@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { getProjectBaseDir, type OrchestratorConfig } from "@syntese/core";
+import { PRIMARY_CLI_COMMAND, getProjectBaseDir, type OrchestratorConfig } from "@syntese/core";
 
 const LIFECYCLE_PID_FILE = "lifecycle-worker.pid";
 const LIFECYCLE_LOG_FILE = "lifecycle-worker.log";
@@ -142,7 +142,7 @@ function resolveLifecycleWorkerLaunch(projectId: string): { command: string; arg
   }
 
   return {
-    command: "ao",
+    command: PRIMARY_CLI_COMMAND,
     args: workerArgs,
   };
 }

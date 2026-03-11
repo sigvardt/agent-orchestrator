@@ -1043,7 +1043,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       .trim();
 
     const lines = [
-      "You are taking over an orphaned PR because the previous AO session exited unexpectedly.",
+      "You are taking over an orphaned PR because the previous Syntese session exited unexpectedly.",
       `Previous session: ${session.id}`,
       `Recovery attempt: ${recoveryAttempt}`,
       `Trigger: ${action.trigger}`,

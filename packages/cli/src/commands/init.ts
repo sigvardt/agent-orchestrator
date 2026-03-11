@@ -5,7 +5,7 @@ import { cwd } from "node:process";
 import { stringify as yamlStringify } from "yaml";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { generateSessionPrefix } from "@syntese/core";
+import { generateSessionPrefix, PRIMARY_CLI_COMMAND } from "@syntese/core";
 import { git, gh, execSilent } from "../lib/shell.js";
 import { findFreePort, MAX_PORT_SCAN } from "../lib/web-dir.js";
 import {
@@ -160,7 +160,7 @@ export function registerInit(program: Command): void {
       // Validate --smart requires --auto
       if (opts.smart && !opts.auto) {
         console.error(chalk.red("Error: --smart requires --auto"));
-        console.log(chalk.dim("Use: ao init --auto --smart"));
+        console.log(chalk.dim(`Use: ${PRIMARY_CLI_COMMAND} init --auto --smart`));
         process.exit(1);
       }
 
@@ -370,11 +370,13 @@ export function registerInit(program: Command): void {
         console.log("  1. Review the config (optional):");
         console.log(chalk.cyan(`     nano ${outputPath}\n`));
         console.log("  2. Start orchestrator + dashboard:");
-        console.log(chalk.cyan("     ao start\n"));
+        console.log(chalk.cyan(`     ${PRIMARY_CLI_COMMAND} start\n`));
 
         if (projectId) {
           console.log("  3. Spawn agent sessions:");
-          console.log(chalk.cyan(`     ao spawn ${projectId} ISSUE-123\n`));
+          console.log(
+            chalk.cyan(`     ${PRIMARY_CLI_COMMAND} spawn ${projectId} ISSUE-123\n`),
+          );
         } else {
           console.log("  3. Add a project to the config:");
           console.log(chalk.cyan(`     nano ${outputPath}\n`));
@@ -458,7 +460,11 @@ async function handleAutoMode(outputPath: string, smart: boolean): Promise<void>
         `  ⚠ No free port found in range ${DEFAULT_PORT}–${DEFAULT_PORT + MAX_PORT_SCAN - 1}.`,
       ),
     );
-    console.log(chalk.dim("    Set the port manually in the config before running ao start.\n"));
+    console.log(
+      chalk.dim(
+        `    Set the port manually in the config before running ${PRIMARY_CLI_COMMAND} start.\n`,
+      ),
+    );
   } else if (port !== DEFAULT_PORT) {
     console.log(chalk.yellow(`  ⚠ Port ${DEFAULT_PORT} is busy — using ${port} instead.`));
   }
@@ -514,16 +520,16 @@ async function handleAutoMode(outputPath: string, smart: boolean): Promise<void>
     console.log("  1. Edit config and update 'repo' field:");
     console.log(chalk.cyan(`     nano ${outputPath}\n`));
     console.log("  2. Start orchestrator + dashboard:");
-    console.log(chalk.cyan("     ao start\n"));
+    console.log(chalk.cyan(`     ${PRIMARY_CLI_COMMAND} start\n`));
     console.log("  3. Spawn agent sessions:");
-    console.log(chalk.cyan(`     ao spawn ${projectId} ISSUE-123\n`));
+    console.log(chalk.cyan(`     ${PRIMARY_CLI_COMMAND} spawn ${projectId} ISSUE-123\n`));
   } else {
     console.log("  1. Review the config (optional):");
     console.log(chalk.cyan(`     nano ${outputPath}\n`));
     console.log("  2. Start orchestrator + dashboard:");
-    console.log(chalk.cyan("     ao start\n"));
+    console.log(chalk.cyan(`     ${PRIMARY_CLI_COMMAND} start\n`));
     console.log("  3. Spawn agent sessions:");
-    console.log(chalk.cyan(`     ao spawn ${projectId} ISSUE-123\n`));
+    console.log(chalk.cyan(`     ${PRIMARY_CLI_COMMAND} spawn ${projectId} ISSUE-123\n`));
   }
 
   // Show warnings

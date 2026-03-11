@@ -11,6 +11,7 @@ import {
   type OrchestratorConfig,
   type DecomposerConfig,
   DEFAULT_DECOMPOSER_CONFIG,
+  PRIMARY_CLI_COMMAND,
 } from "@syntese/core";
 import { exec } from "../lib/shell.js";
 import { banner } from "../lib/format.js";
@@ -154,7 +155,11 @@ export function registerSpawn(program: Command): void {
         }
 
         if (!opts.claimPr && opts.assignOnGithub) {
-          console.error(chalk.red("--assign-on-github requires --claim-pr on `ao spawn`."));
+          console.error(
+            chalk.red(
+              `--assign-on-github requires --claim-pr on \`${PRIMARY_CLI_COMMAND} spawn\`.`,
+            ),
+          );
           process.exit(1);
         }
 

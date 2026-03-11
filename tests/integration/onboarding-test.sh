@@ -49,13 +49,15 @@ if ! ./scripts/setup.sh; then
 fi
 end_step "Step 2: Setup completed"
 
-# Step 3: Verify ao command is available
-start_step "Step 3: Verify ao command"
-if ! command -v ao &> /dev/null; then
-    fail_step "Step 3: ao command not found (npm link failed?)"
-fi
-ao --version || fail_step "Step 3: ao --version failed"
-end_step "Step 3: ao command available"
+# Step 3: Verify syn and aliases are available
+start_step "Step 3: Verify syn and aliases"
+for cmd in syn syntese ao; do
+    if ! command -v "$cmd" &> /dev/null; then
+        fail_step "Step 3: $cmd command not found (npm link failed?)"
+    fi
+    "$cmd" --version || fail_step "Step 3: $cmd --version failed"
+done
+end_step "Step 3: syn, syntese, and ao commands available"
 
 # Step 4: Create minimal test config
 start_step "Step 4: Create test configuration"
@@ -81,7 +83,7 @@ end_step "Step 4: Configuration created"
 
 # Step 5: Verify config is valid
 start_step "Step 5: Validate configuration"
-# ao init would fail if run again, so we just verify the file is readable
+# syn init would fail if run again, so we just verify the file is readable
 if [ ! -f syntese.yaml ]; then
     fail_step "Step 5: Config file not found"
 fi
@@ -90,7 +92,7 @@ end_step "Step 5: Configuration validated"
 # Step 6: Start Syntese (in background)
 start_step "Step 6: Start Syntese"
 # Start in background and capture PID
-ao start --no-orchestrator &  # Only start the dashboard, not the Syntese session
+syn start --no-orchestrator &  # Only start the dashboard, not the Syntese session
 DASHBOARD_PID=$!
 
 # Wait for dashboard to be ready (max 30 seconds)
@@ -141,7 +143,7 @@ for i in $(seq 1 $max_retries); do
         break
     fi
     if [ $i -eq $max_retries ]; then
-        fail_step "Step 8: WebSocket terminal server not responding (bug: ao start didn't launch all services)"
+        fail_step "Step 8: WebSocket terminal server not responding (bug: syn start didn't launch all services)"
     fi
     sleep 1
 done

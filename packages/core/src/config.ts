@@ -16,6 +16,7 @@ import { resolve, join, basename } from "node:path";
 import { homedir } from "node:os";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { PRIMARY_CLI_COMMAND } from "./cli-command.js";
 import type { OrchestratorConfig } from "./types.js";
 import { generateSessionPrefix } from "./paths.js";
 
@@ -36,7 +37,7 @@ const HOME_CONFIG_PATHS = [
 ];
 
 const MISSING_CONFIG_ERROR =
-  "No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run `ao init` to create one.";
+  `No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run \`${PRIMARY_CLI_COMMAND} init\` to create one.`;
 
 function inferScmPlugin(project: {
   repo: string;

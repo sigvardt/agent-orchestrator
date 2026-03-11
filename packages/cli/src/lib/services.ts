@@ -11,7 +11,12 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { generateConfigHash, getDataRootDir, type OrchestratorConfig } from "@syntese/core";
+import {
+  PRIMARY_CLI_COMMAND,
+  generateConfigHash,
+  getDataRootDir,
+  type OrchestratorConfig,
+} from "@syntese/core";
 import { exec, execSilent } from "./shell.js";
 import { findWebDir, isPortAvailable } from "./web-dir.js";
 
@@ -228,10 +233,10 @@ function buildSystemdUnitContent(
   const { ports, webDir, config } = context;
   const serviceName =
     id === "dashboard"
-      ? "AO Dashboard"
+      ? "Syntese Dashboard"
       : id === "terminal-ws"
-        ? "AO Terminal WebSocket"
-        : "AO Direct Terminal WebSocket";
+        ? "Syntese Terminal WebSocket"
+        : "Syntese Direct Terminal WebSocket";
 
   const env: Array<[string, string]> = [
     ["AO_CONFIG_PATH", config.configPath],
@@ -455,7 +460,7 @@ function resolveSupervisorLaunch(): { command: string; args: string[] } {
   }
 
   return {
-    command: "ao",
+    command: PRIMARY_CLI_COMMAND,
     args: supervisorArgs,
   };
 }
@@ -629,10 +634,10 @@ export async function installManagedServices(
   const context = await getServiceContext(config);
 
   if (manager === "systemd") {
-    const { units, unitDir } = await writeSystemdUnits(context, { enable: opts?.enable });
+    const { unitDir } = await writeSystemdUnits(context, { enable: opts?.enable });
     return {
       manager,
-      detail: `installed units in ${unitDir} (${units.dashboard}, ${units.terminalWs}, ${units.directTerminalWs})`,
+      detail: `installed systemd user services in ${unitDir}`,
     };
   }
 
@@ -651,7 +656,7 @@ async function getSystemdStatus(context: ServiceContext): Promise<ManagedService
   return {
     manager: "systemd",
     managerRunning,
-    managerDetail: `${units.dashboard}, ${units.terminalWs}, ${units.directTerminalWs}`,
+    managerDetail: "systemd user services",
     processStates,
     services,
     allReady,
@@ -854,7 +859,7 @@ export async function runSupervisorLoop(config: OrchestratorConfig): Promise<voi
     const retries = (restartCounters.get(spec.id) ?? 0) + 1;
     restartCounters.set(spec.id, retries);
     const delayMs = Math.min(15_000, 500 * 2 ** Math.min(retries, 5));
-    console.error(`[ao-services] ${spec.id} ${reason}; restarting in ${delayMs}ms`);
+    console.error(`[syn-services] ${spec.id} ${reason}; restarting in ${delayMs}ms`);
     const timer = setTimeout(() => {
       if (!shuttingDown) {
         startSpec(spec);
@@ -901,7 +906,7 @@ export async function runSupervisorLoop(config: OrchestratorConfig): Promise<voi
   const handleShutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`[ao-services] received ${signal}; shutting down managed services`);
+    console.log(`[syn-services] received ${signal}; shutting down managed services`);
     for (const [, child] of children) {
       try {
         child.kill("SIGTERM");

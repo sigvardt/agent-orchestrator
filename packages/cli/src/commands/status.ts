@@ -11,6 +11,7 @@ import {
   type Tracker,
   type ProjectConfig,
   loadConfig,
+  PRIMARY_CLI_COMMAND,
 } from "@syntese/core";
 import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import {
@@ -199,7 +200,7 @@ export function registerStatus(program: Command): void {
       try {
         config = loadConfig();
       } catch {
-        console.log(chalk.yellow("No config found. Run `ao init` first."));
+        console.log(chalk.yellow(`No config found. Run \`${PRIMARY_CLI_COMMAND} init\` first.`));
         console.log(chalk.dim("Falling back to session discovery...\n"));
         await showFallbackStatus();
         return;
@@ -315,7 +316,7 @@ export function registerStatus(program: Command): void {
           if (unverifiedTotal > 0) {
             console.log(
               chalk.yellow(
-                `  ⚠ ${unverifiedTotal} issue${unverifiedTotal !== 1 ? "s" : ""} awaiting verification (use \`ao verify --list\` to see them)`,
+                `  ⚠ ${unverifiedTotal} issue${unverifiedTotal !== 1 ? "s" : ""} awaiting verification (use \`${PRIMARY_CLI_COMMAND} verify --list\` to see them)`,
               ),
             );
           }

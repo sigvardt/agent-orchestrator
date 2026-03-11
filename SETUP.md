@@ -91,12 +91,12 @@ npm install -g pnpm
 
 ## First-Time Configuration
 
-### Quick Onboarding with `ao start <url>`
+### Quick Onboarding with `syn start <url>`
 
 The fastest way to get started with any repo:
 
 ```bash
-ao start https://github.com/your-org/your-repo
+syn start https://github.com/your-org/your-repo
 ```
 
 This single command will:
@@ -109,43 +109,43 @@ This single command will:
 Supports GitHub, GitLab, and Bitbucket URLs (HTTPS and SSH):
 
 ```bash
-ao start https://github.com/owner/repo
-ao start https://gitlab.com/org/project
-ao start git@github.com:owner/repo.git
+syn start https://github.com/owner/repo
+syn start https://gitlab.com/org/project
+syn start git@github.com:owner/repo.git
 ```
 
 If the repo already has a `syntese.yaml`, it will be used as-is.
 
 ### Supervised Runtime (Recommended)
 
-Use `ao services` for resilient dashboard and terminal connectivity:
+Use `syn services` for resilient dashboard and terminal connectivity:
 
 ```bash
 # One-time install (systemd user services on Linux, portable supervisor fallback elsewhere)
-ao services install
+syn services install
 
 # Verify dashboard + websocket readiness (3000/14800/14801)
-ao services status --strict
+syn services status --strict
 ```
 
 This is the recommended migration path from ad-hoc `pnpm dev` shell processes.  
-`ao dashboard` remains available for local development but is intentionally unsupervised.
+`syn dashboard` remains available for local development but is intentionally unsupervised.
 
 ### Runtime Acceptance Checks (Issue #417)
 
-After `ao services install`, validate:
+After `syn services install`, validate:
 
 1. Killing any one of the three processes auto-recovers without manual restart.
 2. Dashboard endpoints remain reachable (`/ao/` and `/sessions/<id>` via your proxy/local routing).
 3. Terminal no longer stalls on `Connecting... XDA` due to missing ws backends (`14800`/`14801` healthy).
 
-### Quick Setup with `ao init`
+### Quick Setup with `syn init`
 
 For more control over configuration:
 
 ```bash
 cd ~/your-repo
-ao init
+syn init
 ```
 
 The wizard will prompt you for:
@@ -162,7 +162,7 @@ The wizard will prompt you for:
 10. **Local path** - Path to your repository
 11. **Default branch** - Main branch name (usually `main` or `master`)
 
-### What `ao init` Detects Automatically
+### What `syn init` Detects Automatically
 
 The wizard is smart and tries to help:
 
@@ -425,7 +425,7 @@ See [CLAUDE.md](./CLAUDE.md) for plugin development guidelines.
 
 ```bash
 # Run init wizard
-ao init
+syn init
 
 # Or copy an example
 cp examples/simple-github.yaml syntese.yaml
@@ -528,10 +528,10 @@ df -h
 
 ```bash
 # List active sessions
-ao session ls
+syn session ls
 
 # Check status dashboard
-ao status
+syn status
 ```
 
 ### "Agent not responding"
@@ -542,17 +542,17 @@ ao status
 
 ```bash
 # Check session status
-ao status
+syn status
 
 # Attach to session to investigate
-ao open <session-name>
+syn open <session-name>
 
 # Send message to agent
-ao send <session-name> "Please report your current status"
+syn send <session-name> "Please report your current status"
 
 # Kill and respawn if necessary
-ao session kill <session-name>
-ao spawn <project-id> <issue-id>
+syn session kill <session-name>
+syn spawn <project-id> <issue-id>
 ```
 
 ### "Permission denied" when spawning
@@ -782,25 +782,25 @@ projects:
 
 Three ways:
 
-1. **Dashboard** - `ao start` then visit http://localhost:3000 (or your configured `port:`)
-2. **CLI status** - `ao status` (text-based dashboard)
-3. **Attach to session** - `ao open <session-name>` (live terminal)
+1. **Dashboard** - `syn start` then visit http://localhost:3000 (or your configured `port:`)
+2. **CLI status** - `syn status` (text-based dashboard)
+3. **Attach to session** - `syn open <session-name>` (live terminal)
 
 ### What if an agent gets stuck?
 
 ```bash
 # Check status
-ao status
+syn status
 
 # Send message
-ao send <session-name> "What's your current status?"
+syn send <session-name> "What's your current status?"
 
 # Attach to investigate
-ao open <session-name>
+syn open <session-name>
 
 # Kill and respawn if necessary
-ao session kill <session-name>
-ao spawn <project-id> <issue-id>
+syn session kill <session-name>
+syn spawn <project-id> <issue-id>
 ```
 
 Agents also send "stuck" notifications automatically after inactivity threshold.
@@ -809,13 +809,13 @@ Agents also send "stuck" notifications automatically after inactivity threshold.
 
 ```bash
 # List all sessions
-ao session ls
+syn session ls
 
 # Kill specific session
-ao session kill <session-name>
+syn session kill <session-name>
 
 # Cleanup script (example)
-ao session ls --json | jq -r '.[] | select(.status == "merged") | .id' | xargs -I{} ao session kill {}
+syn session ls --json | jq -r '.[] | select(.status == "merged") | .id' | xargs -I{} syn session kill {}
 ```
 
 ### Can I run multiple orchestrators?
@@ -826,7 +826,7 @@ Yes! Each orchestrator instance should have:
 - Different dashboard port (`port`) — e.g., 3000 for project A, 3001 for project B
 - Different config file
 
-For supervised runtime (`ao services`), default websocket ports are stable (`14800` + `14801`) so XDA routing stays predictable. For multiple orchestrator instances, set `terminalPort` and `directTerminalPort` explicitly in each config.
+For supervised runtime (`syn services`), default websocket ports are stable (`14800` + `14801`) so XDA routing stays predictable. For multiple orchestrator instances, set `terminalPort` and `directTerminalPort` explicitly in each config.
 
 Useful for:
 
@@ -836,9 +836,9 @@ Useful for:
 
 ## Next Steps
 
-1. **Run `ao init`** - Create your first config
-2. **Spawn an agent** - `ao spawn my-app ISSUE-123`
-3. **Monitor progress** - `ao status` or dashboard
+1. **Run `syn init`** - Create your first config
+2. **Spawn an agent** - `syn spawn my-app ISSUE-123`
+3. **Monitor progress** - `syn status` or dashboard
 4. **Read [CLAUDE.md](./CLAUDE.md)** - Code conventions and architecture
 5. **Explore examples** - See [examples/](./examples/) for more configs
 6. **Join the community** - Report issues, share configs, contribute plugins

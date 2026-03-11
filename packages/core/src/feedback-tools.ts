@@ -43,12 +43,12 @@ export interface FeedbackToolContract {
 export const FEEDBACK_TOOL_CONTRACTS: Record<FeedbackToolName, FeedbackToolContract> = {
   bug_report: {
     name: FEEDBACK_TOOL_NAMES.BUG_REPORT,
-    description: "Capture reproducible bugs found while working in AO sessions.",
+    description: "Capture reproducible bugs found while working in Syntese sessions.",
     schema: BugReportSchema,
   },
   improvement_suggestion: {
     name: FEEDBACK_TOOL_NAMES.IMPROVEMENT_SUGGESTION,
-    description: "Capture actionable improvement suggestions discovered in AO sessions.",
+    description: "Capture actionable improvement suggestions discovered in Syntese sessions.",
     schema: ImprovementSuggestionSchema,
   },
 };

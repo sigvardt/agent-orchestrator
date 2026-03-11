@@ -6,6 +6,7 @@ import {
   type OrchestratorConfig,
   type PluginRegistry,
   loadConfig,
+  PRIMARY_CLI_COMMAND,
 } from "@syntese/core";
 
 /**
@@ -28,7 +29,7 @@ function resolveProject(
 
   const ids = Object.keys(config.projects);
   if (ids.length === 0) {
-    console.error(chalk.red("No projects configured. Run `ao init` first."));
+    console.error(chalk.red(`No projects configured. Run \`${PRIMARY_CLI_COMMAND} init\` first.`));
     process.exit(1);
   }
   if (ids.length > 1) {
@@ -86,7 +87,7 @@ export function registerVerify(program: Command): void {
         try {
           config = loadConfig();
         } catch {
-          console.error(chalk.red("No config found. Run `ao init` first."));
+          console.error(chalk.red(`No config found. Run \`${PRIMARY_CLI_COMMAND} init\` first.`));
           process.exit(1);
           return;
         }
@@ -129,7 +130,11 @@ export function registerVerify(program: Command): void {
 
         // Verify/fail mode: requires an issue argument
         if (!issue) {
-          console.error(chalk.red("Issue number is required. Usage: ao verify <issue>"));
+          console.error(
+            chalk.red(
+              `Issue number is required. Usage: ${PRIMARY_CLI_COMMAND} verify <issue>`,
+            ),
+          );
           process.exit(1);
         }
 

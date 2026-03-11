@@ -229,7 +229,7 @@ export function registerSession(program: Command): void {
         if (!resolvedSession) {
           console.error(
             chalk.red(
-              "No session provided. Pass a session name or run this inside a managed AO session.",
+              "No session provided. Pass a session name or run this inside a managed Syntese session.",
             ),
           );
           process.exit(1);
@@ -300,7 +300,7 @@ export function registerSession(program: Command): void {
 
   session
     .command("remap")
-    .description("Re-discover and persist OpenCode session mapping for an AO session")
+    .description("Re-discover and persist OpenCode session mapping for a Syntese session")
     .argument("<session>", "Session name to remap")
     .option("-f, --force", "Force fresh remap by re-discovering the OpenCode session")
     .action(async (sessionName: string, opts: { force?: boolean }) => {

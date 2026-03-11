@@ -5,8 +5,9 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "ao": "bin/ao.js",
-    "syntese": "bin/ao.js"
+    "syn": "bin/ao.js",
+    "syntese": "bin/ao.js",
+    "ao": "bin/ao.js"
   },
   "files": [
     "bin"

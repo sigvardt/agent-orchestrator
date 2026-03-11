@@ -214,6 +214,6 @@ describe("BASE_AGENT_PROMPT", () => {
     expect(BASE_AGENT_PROMPT).toContain("Session Lifecycle");
     expect(BASE_AGENT_PROMPT).toContain("Git Workflow");
     expect(BASE_AGENT_PROMPT).toContain("PR Best Practices");
-    expect(BASE_AGENT_PROMPT).toContain("ao session claim-pr");
+    expect(BASE_AGENT_PROMPT).toContain("syn session claim-pr");
   });
 });

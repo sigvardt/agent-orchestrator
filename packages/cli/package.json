@@ -1,12 +1,13 @@
 {
   "name": "@syntese/cli",
   "version": "0.1.0",
-  "description": "CLI for syntese — the `ao` and `syntese` commands",
+  "description": "CLI for Syntese — `syn` with `syntese` and `ao` aliases",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "ao": "dist/index.js",
-    "syntese": "dist/index.js"
+    "syn": "dist/index.js",
+    "syntese": "dist/index.js",
+    "ao": "dist/index.js"
   },
   "main": "dist/index.js",
   "files": [

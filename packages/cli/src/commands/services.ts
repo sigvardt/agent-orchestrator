@@ -39,7 +39,7 @@ function colorProcessState(state: string): string {
 }
 
 function printServicesStatus(status: ManagedServicesStatus): void {
-  console.log(chalk.bold("\nAO Services\n"));
+  console.log(chalk.bold("\nSyntese Services\n"));
   const managerState = status.managerRunning ? chalk.green("running") : chalk.red("not running");
   console.log(`  Manager: ${chalk.cyan(status.manager)} (${managerState})`);
   console.log(`  Detail:  ${chalk.dim(status.managerDetail)}\n`);
@@ -204,7 +204,7 @@ export function registerServices(program: Command): void {
 
   services
     .command("run-supervisor")
-    .description("Internal: run portable AO services supervisor")
+    .description("Internal: run portable Syntese services supervisor")
     .action(async () => {
       try {
         const config = loadConfig();

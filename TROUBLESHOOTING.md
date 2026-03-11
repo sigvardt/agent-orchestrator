@@ -13,11 +13,11 @@
 
 ```bash
 # Check readiness for dashboard + websocket backends
-ao services status --strict
+syn services status --strict
 
 # Restart supervised services
-ao services stop
-ao services start
+syn services stop
+syn services start
 ```
 
 **Expected healthy state**:
@@ -26,7 +26,7 @@ ao services start
 - `http://127.0.0.1:14800/health` returns `200`
 - `http://127.0.0.1:14801/health` returns `200`
 
-**Prevention**: Use `ao services install` so services are supervised and auto-restarted.
+**Prevention**: Use `syn services install` so services are supervised and auto-restarted.
 
 ## DirectTerminal: posix_spawnp failed error
 
@@ -82,7 +82,7 @@ npx node-gyp rebuild
 
 **Symptom**: API returns 500 with "No syntese.yaml found"
 
-**Fix**: Ensure config exists in the directory where you run `ao start`, or symlink it:
+**Fix**: Ensure config exists in the directory where you run `syn start`, or symlink it:
 
 ```bash
 ln -s /path/to/syntese.yaml packages/web/syntese.yaml

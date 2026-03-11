@@ -22,7 +22,7 @@ Spawn parallel AI coding agents, each in its own git worktree. Agents autonomous
 
 Syntese manages fleets of AI coding agents working in parallel on your codebase. Each agent gets its own git worktree, its own branch, and its own PR. When CI fails, the agent fixes it. When reviewers leave comments, the agent addresses them. You only get pulled in when human judgment is needed.
 
-`ao` remains the backward-compatible CLI alias, so the commands below continue to use `ao`.
+Use `syn` as the primary CLI command. `syntese` and `ao` are also available as aliases.
 
 **Agent-agnostic** (Claude Code, Codex, Aider) · **Runtime-agnostic** (tmux, Docker) · **Tracker-agnostic** (GitHub, Linear)
 
@@ -54,38 +54,38 @@ git clone https://github.com/sigvardt/syntese.git
 cd syntese && bash scripts/setup.sh
 
 # One command to clone, configure, and launch
-ao start https://github.com/your-org/your-repo
+syn start https://github.com/your-org/your-repo
 ```
 
 Auto-detects language, package manager, SCM platform, and default branch. Generates `syntese.yaml` and starts the dashboard + orchestrator.
-On supported hosts, `ao start` also brings up the supervised dashboard services automatically. Use `ao services status --strict` to confirm dashboard and websocket readiness.
+On supported hosts, `syn start` also brings up the supervised dashboard services automatically. Use `syn services status --strict` to confirm dashboard and websocket readiness.
 
 **Option B — From an existing local repo:**
 
 ```bash
-cd ~/your-project && ao init --auto
-ao start
+cd ~/your-project && syn init --auto
+syn start
 ```
 
 Then spawn agents:
 
 ```bash
-ao spawn my-project 123    # GitHub issue, Linear ticket, or ad-hoc
+syn spawn my-project 123    # GitHub issue, Linear ticket, or ad-hoc
 ```
 
-Dashboard opens at `http://localhost:3000`. Run `ao status` for the CLI view.
+Dashboard opens at `http://localhost:3000`. Run `syn status` for the CLI view.
 
 For resilient dashboard + terminal websocket uptime (including XDA terminal connectivity), install supervised services:
 
 ```bash
-ao services install
-ao services status
+syn services install
+syn services status
 ```
 
 ## How It Works
 
 ```
-ao spawn my-project 123
+syn spawn my-project 123
 ```
 
 1. **Workspace** creates an isolated git worktree with a feature branch
@@ -166,19 +166,19 @@ See [`syntese.yaml.example`](syntese.yaml.example) for the full reference.
 ## CLI
 
 ```bash
-ao status                              # Overview of all sessions
-ao spawn <project> [issue]             # Spawn an agent
-ao send <session> "Fix the tests"      # Send instructions
-ao session ls                          # List sessions
-ao session kill <session>              # Kill a session
-ao session restore <session>           # Revive a crashed agent
-ao dashboard                           # Open web dashboard (dev mode)
-ao services install|start|stop|status  # Supervised dashboard/ws runtime
+syn status                              # Overview of all sessions
+syn spawn <project> [issue]             # Spawn an agent
+syn send <session> "Fix the tests"      # Send instructions
+syn session ls                          # List sessions
+syn session kill <session>              # Kill a session
+syn session restore <session>           # Revive a crashed agent
+syn dashboard                           # Open web dashboard (dev mode)
+syn services install|start|stop|status  # Supervised dashboard/ws runtime
 ```
 
 ## Supervised Runtime (Recommended)
 
-`ao services` runs and monitors all three runtime endpoints:
+`syn services` runs and monitors all three runtime endpoints:
 
 - dashboard web server (`3000`)
 - terminal websocket server (`14800`)
@@ -188,10 +188,10 @@ Use this for normal operation instead of ad-hoc `pnpm dev` shell processes:
 
 ```bash
 # One-time setup (installs systemd user services on Linux, fallback supervisor elsewhere)
-ao services install
+syn services install
 
 # Check readiness for dashboard + XDA websocket backends
-ao services status --strict
+syn services status --strict
 ```
 
 ## Why Syntese?
@@ -200,7 +200,7 @@ Running one AI agent in a terminal is easy. Running 30 across different issues, 
 
 **Without orchestration**, you manually: create branches, start agents, check if they're stuck, read CI failures, forward review comments, track which PRs are ready to merge, clean up when done.
 
-**With Syntese**, you: `ao spawn` and walk away. The system handles isolation, feedback routing, and status tracking. You review PRs and make decisions — the rest is automated.
+**With Syntese**, you: `syn spawn` and walk away. The system handles isolation, feedback routing, and status tracking. You review PRs and make decisions — the rest is automated.
 
 ## Prerequisites
 

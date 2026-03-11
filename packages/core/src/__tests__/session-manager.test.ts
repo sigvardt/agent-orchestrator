@@ -1017,7 +1017,7 @@ describe("spawn", () => {
 
     expect(mockRuntime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ id: expect.any(String) }),
-      expect.stringContaining("ao session claim-pr"),
+      expect.stringContaining("syn session claim-pr"),
     );
     vi.useRealTimers();
   });

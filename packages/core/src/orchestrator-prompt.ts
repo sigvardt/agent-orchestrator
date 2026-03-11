@@ -1,10 +1,11 @@
 /**
  * Orchestrator Prompt Generator — generates orchestrator prompt content.
  *
- * This is injected via `ao start` to provide orchestrator-specific context
+ * This is injected via `syn start` to provide orchestrator-specific context
  * when the orchestrator agent runs.
  */
 
+import { PRIMARY_CLI_COMMAND } from "./cli-command.js";
 import type { OrchestratorConfig, ProjectConfig } from "./types.js";
 
 export interface OrchestratorPromptConfig {
@@ -20,6 +21,7 @@ export interface OrchestratorPromptConfig {
  */
 export function generateOrchestratorPrompt(opts: OrchestratorPromptConfig): string {
   const { config, projectId, project } = opts;
+  const cli = PRIMARY_CLI_COMMAND;
   const sections: string[] = [];
 
   // Header
@@ -44,27 +46,27 @@ Your role is to coordinate and manage worker agent sessions. You do NOT write co
 
 \`\`\`bash
 # See all sessions at a glance
-ao status
+${cli} status
 
 # Spawn sessions for issues (GitHub: #123, Linear: INT-1234, etc.)
-ao spawn ${projectId} INT-1234
-ao spawn ${projectId} --claim-pr 123
-ao batch-spawn ${projectId} INT-1 INT-2 INT-3
+${cli} spawn ${projectId} INT-1234
+${cli} spawn ${projectId} --claim-pr 123
+${cli} batch-spawn ${projectId} INT-1 INT-2 INT-3
 
 # List sessions
-ao session ls -p ${projectId}
+${cli} session ls -p ${projectId}
 
 # Send message to a session
-ao send ${project.sessionPrefix}-1 "Your message here"
+${cli} send ${project.sessionPrefix}-1 "Your message here"
 
 # Claim an existing PR for a session
-ao session claim-pr 123 ${project.sessionPrefix}-1
+${cli} session claim-pr 123 ${project.sessionPrefix}-1
 
 # Kill a session
-ao session kill ${project.sessionPrefix}-1
+${cli} session kill ${project.sessionPrefix}-1
 
 # Open all sessions in terminal tabs
-ao open ${projectId}
+${cli} open ${projectId}
 \`\`\``);
 
   // Available Commands
@@ -72,17 +74,17 @@ ao open ${projectId}
 
 | Command | Description |
 |---------|-------------|
-| \`ao status\` | Show all sessions with PR/CI/review status |
-| \`ao spawn <project> [issue] [--claim-pr <pr>]\` | Spawn a worker session, optionally attached to an existing PR |
-| \`ao batch-spawn <project> <issues...>\` | Spawn multiple sessions in parallel |
-| \`ao session ls [-p project]\` | List all sessions (optionally filter by project) |
-| \`ao session claim-pr <pr> [session]\` | Attach an existing PR to a session |
-| \`ao session attach <session>\` | Attach to a session's tmux window |
-| \`ao session kill <session>\` | Kill a specific session |
-| \`ao session cleanup [-p project]\` | Kill completed/merged sessions |
-| \`ao send <session> <message>\` | Send a message to a running session |
-| \`ao dashboard\` | Start the web dashboard (http://localhost:${config.port ?? 3000}) |
-| \`ao open <project>\` | Open all project sessions in terminal tabs |`);
+| \`${cli} status\` | Show all sessions with PR/CI/review status |
+| \`${cli} spawn <project> [issue] [--claim-pr <pr>]\` | Spawn a worker session, optionally attached to an existing PR |
+| \`${cli} batch-spawn <project> <issues...>\` | Spawn multiple sessions in parallel |
+| \`${cli} session ls [-p project]\` | List all sessions (optionally filter by project) |
+| \`${cli} session claim-pr <pr> [session]\` | Attach an existing PR to a session |
+| \`${cli} session attach <session>\` | Attach to a session's tmux window |
+| \`${cli} session kill <session>\` | Kill a specific session |
+| \`${cli} session cleanup [-p project]\` | Kill completed/merged sessions |
+| \`${cli} send <session> <message>\` | Send a message to a running session |
+| \`${cli} dashboard\` | Start the web dashboard (http://localhost:${config.port ?? 3000}) |
+| \`${cli} open <project>\` | Open all project sessions in terminal tabs |`);
 
   // Session Management
   sections.push(`## Session Management
@@ -98,7 +100,7 @@ When you spawn a session:
 
 ### Monitoring Progress
 
-Use \`ao status\` to see:
+Use \`${cli} status\` to see:
 - Current session status (working, pr_open, review_pending, etc.)
 - PR state (open/merged/closed)
 - CI status (passing/failing/pending)
@@ -109,25 +111,25 @@ Use \`ao status\` to see:
 
 Send instructions to a running agent:
 \`\`\`bash
-ao send ${project.sessionPrefix}-1 "Please address the review comments on your PR"
+${cli} send ${project.sessionPrefix}-1 "Please address the review comments on your PR"
 \`\`\`
 
 ### PR Takeover
 
 If a session needs to continue work on an existing PR:
 \`\`\`bash
-ao session claim-pr 123 ${project.sessionPrefix}-1
+${cli} session claim-pr 123 ${project.sessionPrefix}-1
 # or do it at spawn time
-ao spawn ${projectId} --claim-pr 123
+${cli} spawn ${projectId} --claim-pr 123
 \`\`\`
 
-This updates AO metadata, switches the worktree onto the PR branch, and lets lifecycle reactions keep routing CI and review feedback to that session.
+This updates Syntese metadata, switches the worktree onto the PR branch, and lets lifecycle reactions keep routing CI and review feedback to that session.
 
 ### Cleanup
 
 Remove completed sessions:
 \`\`\`bash
-ao session cleanup -p ${projectId}  # Kill sessions where PR is merged or issue is closed
+${cli} session cleanup -p ${projectId}  # Kill sessions where PR is merged or issue is closed
 \`\`\``);
 
   // Dashboard
@@ -171,15 +173,15 @@ ${reactionLines.join("\n")}`);
 
 ### Bulk Issue Processing
 1. Get list of issues from tracker (GitHub/Linear/etc.)
-2. Use \`ao batch-spawn\` to spawn sessions for each issue
-3. Monitor with \`ao status\` or the dashboard
+2. Use \`${cli} batch-spawn\` to spawn sessions for each issue
+3. Monitor with \`${cli} status\` or the dashboard
 4. Agents will fetch, implement, test, PR, and respond to reviews
-5. Use \`ao session cleanup\` when PRs are merged
+5. Use \`${cli} session cleanup\` when PRs are merged
 
 ### Handling Stuck Agents
-1. Check \`ao status\` for sessions in "stuck" or "needs_input" state
-2. Attach with \`ao session attach <session>\` to see what they're doing
-3. Send clarification or instructions with \`ao send <session> '...'\`
+1. Check \`${cli} status\` for sessions in "stuck" or "needs_input" state
+2. Attach with \`${cli} session attach <session>\` to see what they're doing
+3. Send clarification or instructions with \`${cli} send <session> '...'\`
 4. Or kill and respawn with fresh context if needed
 
 ### PR Review Flow
@@ -192,9 +194,9 @@ ${reactionLines.join("\n")}`);
 ### Manual Intervention
 When an agent needs human judgment:
 1. You'll get a notification (desktop/slack/webhook)
-2. Check the dashboard or \`ao status\` for details
-3. Attach to the session if needed: \`ao session attach <session>\`
-4. Send instructions: \`ao send <session> '...'\`
+2. Check the dashboard or \`${cli} status\` for details
+3. Attach to the session if needed: \`${cli} session attach <session>\`
+4. Send instructions: \`${cli} send <session> '...'\`
 5. Or handle it yourself (merge PR, close issue, etc.)`);
 
   // Tips
@@ -210,7 +212,7 @@ When an agent needs human judgment:
 
 5. **Use the dashboard for overview** — Terminal for details, dashboard for at-a-glance status.
 
-6. **Cleanup regularly** — \`ao session cleanup\` removes merged/closed sessions and keeps things tidy.
+6. **Cleanup regularly** — \`${cli} session cleanup\` removes merged/closed sessions and keeps things tidy.
 
 7. **Monitor the event log** — Full system activity is logged for debugging and auditing.
 

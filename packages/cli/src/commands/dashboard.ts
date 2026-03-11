@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig } from "@syntese/core";
+import { loadConfig, PRIMARY_CLI_COMMAND } from "@syntese/core";
 import { findWebDir, buildDashboardEnv, waitForPortAndOpen } from "../lib/web-dir.js";
 import { cleanNextCache, findRunningDashboardPid, findProcessWebDir, waitForPortFree } from "../lib/dashboard-rebuild.js";
 
@@ -60,7 +60,11 @@ export function registerDashboard(program: Command): void {
 
       const webDir = localWebDir;
 
-      console.log(chalk.yellow("Running in dev mode (unsupervised). For resilient runtime use `ao services start`.\n"));
+      console.log(
+        chalk.yellow(
+          `Running in dev mode (unsupervised). For resilient runtime use \`${PRIMARY_CLI_COMMAND} services start\`.\n`,
+        ),
+      );
       console.log(chalk.bold(`Starting dashboard on http://localhost:${port}\n`));
 
       const env = await buildDashboardEnv(
@@ -111,7 +115,7 @@ export function registerDashboard(program: Command): void {
             console.error(
               chalk.yellow(
                 "\nThis looks like a stale build cache issue. Try:\n\n" +
-                  `  ${chalk.cyan("ao dashboard --rebuild")}\n`,
+                  `  ${chalk.cyan(`${PRIMARY_CLI_COMMAND} dashboard --rebuild`)}\n`,
               ),
             );
           }
