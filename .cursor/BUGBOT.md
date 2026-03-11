@@ -2,7 +2,7 @@
 
 ## Project Context
 
-Agent Orchestrator is a TypeScript monorepo for managing parallel AI coding agents. It uses pnpm workspaces with packages under `packages/`.
+Syntese is a TypeScript monorepo for managing parallel AI coding agents. It uses pnpm workspaces with packages under `packages/`.
 
 ## Tech Stack
 

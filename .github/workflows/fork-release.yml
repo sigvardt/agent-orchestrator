@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   release:
-    if: github.repository == 'sigvardt/agent-orchestrator'
+    if: github.repository == 'sigvardt/syntese'
     name: Release
     runs-on: ubuntu-latest
     permissions:

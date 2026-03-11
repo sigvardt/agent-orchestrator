@@ -1,4 +1,4 @@
-# Architecture Design — Agent Orchestrator
+# Architecture Design — Syntese
 
 _Compiled: 2026-02-13_
 
@@ -34,7 +34,7 @@ Human only intervenes when notified. Everything else is handled.
 1. **Push, not pull**: Notifications are the primary interface. Dashboard is secondary drill-down.
 2. **Server-centric**: All agents report to a central server. The server coordinates everything.
 3. **Plugin everything**: 8 pluggable abstraction slots. Swap any component.
-4. **Works out of the box**: Default config (tmux + claude-code + worktree + github) requires zero setup beyond `npx agent-orchestrator init`.
+4. **Works out of the box**: Default config (tmux + claude-code + worktree + github) requires zero setup beyond `npx syntese init`.
 5. **Silence by default, loud when needed**: Auto-handle routine issues (CI failures, review comments). Only notify the human when their judgment or action is truly required.
 6. **Runtime agnostic**: tmux is just one way to run agents. Docker, K8s, cloud, SSH, child processes — all through the same interface.
 
@@ -457,7 +457,7 @@ notifications:
 ### Reactions (configurable auto-responses)
 
 ```yaml
-# agent-orchestrator.yaml
+# syntese.yaml
 reactions:
   ci-failed:
     auto: true
@@ -536,7 +536,7 @@ Clicking a notification deep-links directly to the relevant session/PR in the da
 ### Minimal Config (works out of the box)
 
 ```yaml
-# agent-orchestrator.yaml
+# syntese.yaml
 projects:
   my-app:
     repo: org/repo
@@ -556,8 +556,8 @@ Everything else uses sensible defaults:
 ### Full Config
 
 ```yaml
-# agent-orchestrator.yaml
-dataDir: ~/.agent-orchestrator # metadata storage
+# syntese.yaml
+dataDir: ~/.syntese # metadata storage
 worktreeDir: ~/.worktrees # workspace root
 port: 3000 # web dashboard port
 
@@ -646,13 +646,13 @@ reactions:
 | **Config**          | YAML + Zod validation                   | Human-readable, type-safe                            |
 | **State**           | Flat metadata files + Event log (JSONL) | Stateless orchestrator, crash recovery               |
 | **Package manager** | pnpm workspaces                         | Fast, monorepo-native                                |
-| **Distribution**    | npm (`npx agent-orchestrator`)          | Zero install                                         |
+| **Distribution**    | npm (`npx syntese`)                     | Zero install                                         |
 
 ### Why TypeScript Throughout
 
 1. **One language** — Plugin authors only need TypeScript/JavaScript
 2. **Shared types** — No serialization boundaries between core, web, CLI, plugins
-3. **npm distribution** — `npx agent-orchestrator` works everywhere
+3. **npm distribution** — `npx syntese` works everywhere
 4. **Next.js** — Web + API server in one process, great DX
 5. **Largest ecosystem** — More packages on npm than any other registry
 6. **Performance is fine** — Bottleneck is AI agents, not orchestrator. We shell out to tmux/git/docker anyway.
@@ -662,11 +662,11 @@ reactions:
 ## Directory Structure
 
 ```
-agent-orchestrator/
+syntese/
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
-├── agent-orchestrator.yaml.example
+├── syntese.yaml.example
 │
 ├── packages/
 │   ├── core/                          # @composio/ao-core

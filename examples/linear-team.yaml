@@ -1,7 +1,7 @@
 # Linear integration with custom team
 # Requires LINEAR_API_KEY environment variable
 
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 
 projects:

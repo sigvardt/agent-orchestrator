@@ -1,6 +1,8 @@
-# Agent Orchestrator Setup Guide
+# Syntese Setup Guide
 
-Comprehensive guide to installing, configuring, and troubleshooting Agent Orchestrator.
+Comprehensive guide to installing, configuring, and troubleshooting Syntese.
+
+`ao` remains the backward-compatible CLI alias, so the commands in this guide continue to use `ao`.
 
 ## Prerequisites
 
@@ -63,8 +65,8 @@ The package is not yet published to npm. Install by building from source:
 
 ```bash
 # Clone the repository
-git clone https://github.com/ComposioHQ/agent-orchestrator
-cd agent-orchestrator
+git clone https://github.com/sigvardt/syntese
+cd syntese
 
 # Install dependencies (requires pnpm)
 pnpm install
@@ -101,7 +103,7 @@ This single command will:
 
 1. **Clone** the repo (or reuse an existing clone)
 2. **Auto-detect** language, package manager, SCM platform, and default branch
-3. **Generate** `agent-orchestrator.yaml` with smart defaults
+3. **Generate** `syntese.yaml` with smart defaults
 4. **Start** supervised dashboard + terminal websocket services and the orchestrator agent
 
 Supports GitHub, GitLab, and Bitbucket URLs (HTTPS and SSH):
@@ -112,7 +114,7 @@ ao start https://gitlab.com/org/project
 ao start git@github.com:owner/repo.git
 ```
 
-If the repo already has an `agent-orchestrator.yaml`, it will be used as-is.
+If the repo already has a `syntese.yaml`, it will be used as-is.
 
 ### Supervised Runtime (Recommended)
 
@@ -148,7 +150,7 @@ ao init
 
 The wizard will prompt you for:
 
-1. **Data directory** - Where to store session metadata (default: `~/.agent-orchestrator`)
+1. **Data directory** - Where to store session metadata (default: `~/.syntese`)
 2. **Worktree directory** - Where to create isolated workspaces (default: `~/.worktrees`)
 3. **Dashboard port** - Web interface port (default: `3000`)
 4. **Runtime plugin** - Session runtime (default: `tmux`)
@@ -176,15 +178,15 @@ The wizard is smart and tries to help:
 If you prefer to write the config manually:
 
 ```bash
-cp agent-orchestrator.yaml.example agent-orchestrator.yaml
-nano agent-orchestrator.yaml
+cp syntese.yaml.example syntese.yaml
+nano syntese.yaml
 ```
 
 Or start from an example:
 
 ```bash
-cp examples/simple-github.yaml agent-orchestrator.yaml
-nano agent-orchestrator.yaml
+cp examples/simple-github.yaml syntese.yaml
+nano syntese.yaml
 ```
 
 ## Configuration Reference
@@ -194,7 +196,7 @@ nano agent-orchestrator.yaml
 The absolute minimum needed:
 
 ```yaml
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 port: 3000
 
@@ -207,11 +209,11 @@ projects:
 
 ### Full Configuration Schema
 
-See [agent-orchestrator.yaml.example](./agent-orchestrator.yaml.example) for a fully commented example with all options.
+See [syntese.yaml.example](./syntese.yaml.example) for a fully commented example with all options.
 
 ### Plugin Slots
 
-Agent Orchestrator has 8 plugin slots. All are swappable:
+Syntese has 8 plugin slots. All are swappable:
 
 | Slot          | Purpose              | Default       | Alternatives                                    |
 | ------------- | -------------------- | ------------- | ----------------------------------------------- |
@@ -358,7 +360,7 @@ gh auth status
    - Click "Create new key" or use existing key
    - Team ID is visible in your Linear workspace URL or via API
 
-4. Configure in `agent-orchestrator.yaml`:
+4. Configure in `syntese.yaml`:
    ```yaml
    projects:
      my-app:
@@ -385,7 +387,7 @@ echo $LINEAR_API_KEY  # Should print your key
    source ~/.zshrc
    ```
 
-3. Configure in `agent-orchestrator.yaml`:
+3. Configure in `syntese.yaml`:
    ```yaml
    notifiers:
      slack:
@@ -399,7 +401,7 @@ echo $LINEAR_API_KEY  # Should print your key
 ```bash
 # Send test message
 curl -X POST -H 'Content-type: application/json' \
-  --data '{"text":"Agent Orchestrator test"}' \
+  --data '{"text":"Syntese test"}' \
   $SLACK_WEBHOOK_URL
 ```
 
@@ -415,7 +417,7 @@ See [CLAUDE.md](./CLAUDE.md) for plugin development guidelines.
 
 ## Troubleshooting
 
-### "No agent-orchestrator.yaml found"
+### "No syntese.yaml found"
 
 **Problem:** The orchestrator can't find your config file.
 
@@ -426,7 +428,7 @@ See [CLAUDE.md](./CLAUDE.md) for plugin development guidelines.
 ao init
 
 # Or copy an example
-cp examples/simple-github.yaml agent-orchestrator.yaml
+cp examples/simple-github.yaml syntese.yaml
 ```
 
 ### "tmux not found"
@@ -492,7 +494,7 @@ echo $LINEAR_API_KEY
 **Solution:**
 
 ```bash
-# Option 1: Change port in agent-orchestrator.yaml
+# Option 1: Change port in syntese.yaml
 port: 3001
 
 # Option 2: Find and kill the process using the port
@@ -572,7 +574,7 @@ gh auth login
 
 ### "YAML parse error"
 
-**Problem:** Syntax error in `agent-orchestrator.yaml`.
+**Problem:** Syntax error in `syntese.yaml`.
 
 **Solution:**
 
@@ -843,4 +845,4 @@ Useful for:
 
 ---
 
-**Need help?** Open an issue at: https://github.com/ComposioHQ/agent-orchestrator/issues
+**Need help?** Open an issue at: https://github.com/sigvardt/syntese/issues

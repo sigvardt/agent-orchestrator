@@ -1,4 +1,4 @@
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 port: 3000
 defaults:
@@ -9,7 +9,7 @@ defaults:
     - desktop
 projects:
   ao-35:
-    repo: ComposioHQ/agent-orchestrator
+    repo: sigvardt/syntese
     path: /Users/equinox/.worktrees/ao/ao/ao-35
     defaultBranch: feat/seamless-onboarding
     agentRules: >-

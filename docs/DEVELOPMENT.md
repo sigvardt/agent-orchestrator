@@ -12,8 +12,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/ComposioHQ/agent-orchestrator.git
-cd agent-orchestrator
+git clone https://github.com/sigvardt/syntese.git
+cd syntese
 
 # Install dependencies
 pnpm install
@@ -22,10 +22,10 @@ pnpm install
 pnpm build
 
 # Copy example config
-cp agent-orchestrator.yaml.example agent-orchestrator.yaml
+cp syntese.yaml.example syntese.yaml
 
 # Configure your settings
-$EDITOR agent-orchestrator.yaml
+$EDITOR syntese.yaml
 ```
 
 ### Running the Dev Server
@@ -55,7 +55,7 @@ ao services status --strict
 ### Project Structure
 
 ```
-agent-orchestrator/
+syntese/
 ├── packages/
 │   ├── core/              # Core types, services, config
 │   ├── cli/               # CLI tool (ao command)
@@ -69,7 +69,7 @@ agent-orchestrator/
 │   │   ├── notifier-*/    # Notification channels
 │   │   └── terminal-*/    # Terminal UIs
 │   └── integration-tests/ # Integration tests
-├── agent-orchestrator.yaml.example
+├── syntese.yaml.example
 ├── .gitleaks.toml         # Secret scanning config
 ├── .husky/                # Git hooks
 └── docs/                  # Documentation
@@ -189,7 +189,7 @@ pnpm install
 pnpm build
 
 # Copy config
-cp ../agent-orchestrator/agent-orchestrator.yaml .
+cp ../syntese/syntese.yaml .
 
 # Start dev server
 cd packages/web
@@ -322,7 +322,7 @@ tmux attach -t session-name
 **Inspect session metadata:**
 
 ```bash
-cat ~/.agent-orchestrator/my-app-3
+cat ~/.syntese/my-app-3
 ```
 
 **Check session status:**
@@ -383,10 +383,10 @@ pnpm build
 
 ### Web Dashboard 404s
 
-The web app expects `agent-orchestrator.yaml` in working directory:
+The web app expects `syntese.yaml` in working directory:
 
 ```bash
-cp agent-orchestrator.yaml.example agent-orchestrator.yaml
+cp syntese.yaml.example syntese.yaml
 ```
 
 ### Permission Errors in Tests
@@ -420,4 +420,4 @@ import { foo } from "./bar";
 - [CLAUDE.md](../CLAUDE.md) — Code conventions and architecture
 - [SECURITY.md](../SECURITY.md) — Security best practices
 - [packages/core/README.md](../packages/core/README.md) — Core architecture
-- [agent-orchestrator.yaml.example](../agent-orchestrator.yaml.example) — Config reference
+- [syntese.yaml.example](../syntese.yaml.example) — Config reference

@@ -3,7 +3,7 @@
 ## Core Principles
 
 1. **Convention over configuration** - Auto-derive everything possible
-2. **Single source of truth** - Config file in repo, runtime data in `~/.agent-orchestrator/`
+2. **Single source of truth** - Config file in repo, runtime data in `~/.syntese/`
 3. **Zero path configuration** - All paths determined automatically
 4. **Global uniqueness** - Hash-based namespacing prevents collisions
 
@@ -13,13 +13,13 @@
 
 ```
 Repo (versioned):
-~/any/path/to/agent-orchestrator/
-  agent-orchestrator.yaml              ← Config file (only this matters)
+~/any/path/to/syntese/
+  syntese.yaml              ← Config file (only this matters)
   packages/
   ...
 
 Runtime Data (not versioned):
-~/.agent-orchestrator/                 ← Single parent directory
+~/.syntese/                 ← Single parent directory
   a3b4c5d6e7f8-integrator/             ← {hash}-{projectId}
     sessions/
       int-1                            ← Session metadata files (no hash prefix)
@@ -42,7 +42,7 @@ Runtime Data (not versioned):
 **Hash Derivation (from config location):**
 
 ```typescript
-const configDir = path.dirname(configPath); // /Users/alice/code/agent-orchestrator
+const configDir = path.dirname(configPath); // /Users/alice/code/syntese
 const hash = sha256(configDir).slice(0, 12); // a3b4c5d6e7f8
 
 // Each project managed by this config gets a directory
@@ -51,7 +51,7 @@ const projectId = path.basename(projectPath); // integrator, backend, etc.
 const instanceId = `${hash}-${projectId}`; // a3b4c5d6e7f8-integrator
 
 // Not configurable!
-const projectBaseDir = `~/.agent-orchestrator/${instanceId}`;
+const projectBaseDir = `~/.syntese/${instanceId}`;
 const sessionsDir = `${projectBaseDir}/sessions`;
 const worktreesDir = `${projectBaseDir}/worktrees`;
 ```
@@ -63,7 +63,7 @@ const worktreesDir = `${projectBaseDir}/worktrees`;
 ## 2. Config File (Minimal)
 
 ```yaml
-# agent-orchestrator.yaml
+# syntese.yaml
 
 projects:
   - path: ~/repos/integrator # Required: where is the repo?
@@ -93,7 +93,7 @@ projects:
 {sessionPrefix}-{num}
 
 int-1, int-2    (integrator)
-ao-1, ao-2      (agent-orchestrator)
+syn-1, syn-2    (syntese)
 ss-1, ss-2      (safe-split)
 ```
 
@@ -119,7 +119,7 @@ function generateSessionPrefix(projectId: string): string {
     return uppercase.join("").toLowerCase();
   }
 
-  // kebab-case: agent-orchestrator → ao
+  // kebab-case: syntese-platform → sp
   if (projectId.includes("-") || projectId.includes("_")) {
     const sep = projectId.includes("-") ? "-" : "_";
     return projectId
@@ -141,7 +141,7 @@ function generateSessionPrefix(projectId: string): string {
 ### File Structure (One Directory Per Project)
 
 ```
-~/.agent-orchestrator/a3b4c5d6e7f8-integrator/
+~/.syntese/a3b4c5d6e7f8-integrator/
   sessions/
     int-1      ← Metadata file (user-facing session name)
     int-2
@@ -160,7 +160,7 @@ issue=INT-100
 branch=feat/INT-100
 status=working
 tmuxName=a3b4c5d6e7f8-int-1
-worktree=/Users/alice/.agent-orchestrator/a3b4c5d6e7f8-integrator/worktrees/int-1
+worktree=/Users/alice/.syntese/a3b4c5d6e7f8-integrator/worktrees/int-1
 createdAt=2026-02-17T10:30:00Z
 pr=https://github.com/ComposioHQ/integrator/pull/123
 ```
@@ -206,7 +206,7 @@ ao info
 ### Same Config → Same Hash
 
 ```yaml
-# ~/code/my-orchestrator/agent-orchestrator.yaml
+# ~/code/my-orchestrator/syntese.yaml
 projects:
   - path: ~/repos/integrator
   - path: ~/repos/backend
@@ -215,7 +215,7 @@ projects:
 Results in:
 
 ```
-~/.agent-orchestrator/
+~/.syntese/
   a3b4c5d6e7f8-integrator/        ← Same hash (same config)
   a3b4c5d6e7f8-backend/           ← Same hash (same config)
 ```
@@ -231,7 +231,7 @@ Results in:
 Results in:
 
 ```
-~/.agent-orchestrator/
+~/.syntese/
   a3b4c5d6e7f8-integrator/        ← From ~/code/orchestrator
   f1e2d3c4b5a6-integrator/        ← From ~/code/orchestrator-v2 (different checkout!)
   9876abcd5432-safesplit/         ← From ~/splitly-orchestrator
@@ -249,7 +249,7 @@ f1e2d3c4b5a6-int-1    (v2 checkout)
 ## 7. Complete Example
 
 ```yaml
-# ~/code/my-orchestrator/agent-orchestrator.yaml
+# ~/code/my-orchestrator/syntese.yaml
 projects:
   - path: ~/repos/integrator
     repo: ComposioHQ/integrator
@@ -269,7 +269,7 @@ Config location:
   → Hash: a3b4c5d6e7f8
 
 Runtime data:
-  ~/.agent-orchestrator/
+  ~/.syntese/
     a3b4c5d6e7f8-integrator/      ← Project 1
       sessions/
         int-1

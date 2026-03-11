@@ -1,4 +1,4 @@
-# Security Audit Summary — Agent Orchestrator
+# Security Audit Summary — Syntese
 
 **Date**: 2026-02-16
 **Auditor**: Claude Sonnet 4.5
@@ -23,7 +23,7 @@
 **Issue**: OpenClaw notifier token found in git history
 
 - **Token**: `1af5c4f...872` (redacted - visible in commit history)
-- **File**: `agent-orchestrator.yaml`
+- **File**: `syntese.yaml`
 - **Commit**: `0393ab70a83e090883895d2168aa39a76f997ec8`
 - **Date**: 2026-02-15
 - **Status**: Token already removed from current code, still in git history
@@ -117,7 +117,7 @@ To fix:
   1. Remove the secret from the file
   2. Use environment variables instead: ${SECRET_NAME}
   3. Add to .env.local (which is in .gitignore)
-  4. Update agent-orchestrator.yaml.example with placeholder values
+  4. Update syntese.yaml.example with placeholder values
 
 If this is a false positive, update .gitleaks.toml allowlist
 ```
@@ -202,10 +202,10 @@ id_ed25519
 *.ppk
 
 # Local config (may contain secrets)
-agent-orchestrator.yaml
+syntese.yaml
 ```
 
-**Critical**: `agent-orchestrator.yaml` is now ignored because it contains user secrets
+**Critical**: `syntese.yaml` is now ignored because it contains user secrets
 
 ### 5. Documentation
 
@@ -344,7 +344,7 @@ Finding: OpenClaw token in commit 0393ab70 (documented)
 
 ## Conclusion
 
-✅ **Agent Orchestrator is now protected against secret leaks**
+✅ **Syntese is now protected against secret leaks**
 
 The codebase is currently clean, with one historical secret that needs rotation. Comprehensive automated scanning prevents future accidents. All developers are protected by pre-commit hooks, and CI/CD ensures nothing reaches the main branch.
 

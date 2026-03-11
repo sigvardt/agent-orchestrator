@@ -1,11 +1,11 @@
-# Agent Orchestrator Dashboard — Design Brief
+# Syntese Dashboard — Design Brief
 *Research-backed design specification for the ao dashboard*
 
 ---
 
 ## Product Context
 
-The Agent Orchestrator dashboard is **mission control for parallel AI coding agents**. Users are senior engineers and CTOs who routinely spawn 10–30 agents at once and need to:
+The Syntese dashboard is **mission control for parallel AI coding agents**. Users are senior engineers and CTOs who routinely spawn 10–30 agents at once and need to:
 
 1. Triage at a glance (who needs me right now?)
 2. Merge PRs that are ready

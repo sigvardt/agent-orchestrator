@@ -1,6 +1,6 @@
 # Fork Changelog
 
-All notable changes to `sigvardt/agent-orchestrator` are documented here.
+All notable changes to `sigvardt/syntese` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and fork releases use tags like `v0.1.0-sigvardt.1`.
 

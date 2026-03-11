@@ -1,7 +1,7 @@
 # Minimal setup for a single GitHub repo with GitHub Issues
 # Perfect for getting started quickly
 
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 
 projects:

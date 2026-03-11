@@ -1,14 +1,16 @@
-# Agent Orchestrator Config Examples
+# Syntese Config Examples
 
 This directory contains example configurations for common use cases.
+
+`ao` remains the backward-compatible CLI alias, so the examples below continue to use `ao`.
 
 ## Quick Start
 
 Copy an example and customize:
 
 ```bash
-cp examples/simple-github.yaml agent-orchestrator.yaml
-nano agent-orchestrator.yaml  # edit as needed
+cp examples/simple-github.yaml syntese.yaml
+nano syntese.yaml  # edit as needed
 ao spawn my-app ISSUE-123
 ```
 

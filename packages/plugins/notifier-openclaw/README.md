@@ -15,7 +15,7 @@ OpenClaw notifier plugin for AO escalation events.
 }
 ```
 
-## AO config (`agent-orchestrator.yaml`)
+## AO config (`syntese.yaml`)
 
 ```yaml
 notifiers:

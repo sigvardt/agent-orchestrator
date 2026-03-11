@@ -1,6 +1,6 @@
-# @agent-orchestrator/core
+# Syntese core package (`@agent-orchestrator/core`)
 
-Core services, types, and configuration for the Agent Orchestrator system.
+Core services, types, and configuration for Syntese. The published package name remains `@agent-orchestrator/core` until the package rename lands.
 
 ## What's Here
 
@@ -103,11 +103,11 @@ Loads plugins and provides access to them:
 
 ### `src/config.ts` — Configuration Loading
 
-Loads and validates `agent-orchestrator.yaml`:
+Loads and validates `syntese.yaml`:
 
 **Main config sections:**
 
-- `dataDir` — where session metadata lives (~/.agent-orchestrator)
+- `dataDir` — where session metadata lives (`~/.syntese`)
 - `worktreeDir` — where workspaces are created (~/.worktrees)
 - `port` — web dashboard port (default 3000, set different values for multiple projects)
 - `terminalPort` — terminal WebSocket port (auto-detected if not set)
@@ -176,7 +176,7 @@ const saved = store.persist(FEEDBACK_TOOL_NAMES.BUG_REPORT, {
 
 Storage format:
 
-- Reports are persisted under `~/.agent-orchestrator/{hash}-{projectId}/feedback-reports`
+- Reports are persisted under `~/.syntese/{hash}-{projectId}/feedback-reports`
 - Each report is a typed key=value file (`report_<timestamp>_<id>.kv`) for easy inspection
 - A deterministic dedupe key (`sha256`, 16 hex chars) is generated from normalized tool+content
 
@@ -222,7 +222,7 @@ This package is a dependency of all other packages. Build it first if working on
 
 **Why flat metadata files?**
 
-- Debuggability: `cat ~/.agent-orchestrator/my-app-3` shows full state
+- Debuggability: `cat ~/.syntese/my-app-3` shows full state
 - No database dependency (survives crashes, easy to inspect)
 - Backwards-compatible with bash script orchestrator
 

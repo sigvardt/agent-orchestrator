@@ -47,7 +47,7 @@ Creates the monorepo scaffold and ALL type definitions. After this, every agent 
 5. `packages/core/package.json` + `tsconfig.json`
 6. All plugin package scaffolds (package.json + tsconfig + src/index.ts stub)
 7. `packages/cli/package.json` + `packages/web/package.json` scaffolds
-8. `agent-orchestrator.yaml.example`
+8. `syntese.yaml.example`
 
 **Estimated effort**: Medium. ~500-800 lines of types + config.
 
@@ -143,7 +143,7 @@ Creates the monorepo scaffold and ALL type definitions. After this, every agent 
 
 | Command                                | What                                                 | Reference Script                    |
 | -------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
-| `ao init`                              | Interactive setup wizard → `agent-orchestrator.yaml` | New                                 |
+| `ao init`                              | Interactive setup wizard → `syntese.yaml` | New                                 |
 | `ao status`                            | Colored terminal table of all sessions               | `claude-status`                     |
 | `ao spawn <project> [issue]`           | Spawn single session                                 | `claude-spawn`                      |
 | `ao batch-spawn <project> <issues...>` | Batch spawn with dedup                               | `claude-batch-spawn`                |

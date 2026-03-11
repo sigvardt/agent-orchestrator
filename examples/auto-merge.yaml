@@ -1,7 +1,7 @@
 # Aggressive automation with auto-merge
 # Automatically merges approved PRs with passing CI
 
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 
 projects:

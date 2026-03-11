@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   lint:
-    if: github.repository == 'sigvardt/agent-orchestrator'
+    if: github.repository == 'sigvardt/syntese'
     name: Lint
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +26,7 @@ jobs:
       - run: pnpm run lint
 
   typecheck:
-    if: github.repository == 'sigvardt/agent-orchestrator'
+    if: github.repository == 'sigvardt/syntese'
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
@@ -45,7 +45,7 @@ jobs:
         run: pnpm --filter @composio/ao-web build
 
   test:
-    if: github.repository == 'sigvardt/agent-orchestrator'
+    if: github.repository == 'sigvardt/syntese'
     name: Test
     runs-on: ubuntu-latest
     steps:
@@ -62,7 +62,7 @@ jobs:
         run: pnpm test
 
   test-web:
-    if: github.repository == 'sigvardt/agent-orchestrator'
+    if: github.repository == 'sigvardt/syntese'
     name: Test (Web Unit)
     runs-on: ubuntu-latest
     steps:

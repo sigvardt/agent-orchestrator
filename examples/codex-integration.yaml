@@ -1,7 +1,7 @@
 # Using Codex instead of Claude Code
 # Demonstrates using a different AI agent
 
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 
 defaults:

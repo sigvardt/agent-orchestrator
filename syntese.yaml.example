@@ -1,8 +1,8 @@
-# Agent Orchestrator Configuration
-# Copy to agent-orchestrator.yaml and customize.
+# Syntese Configuration
+# Copy to syntese.yaml and customize.
 
 # Where to store session metadata
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 
 # Where to create workspaces (git worktrees, clones)
 worktreeDir: ~/.worktrees

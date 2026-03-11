@@ -29,7 +29,7 @@ The orchestrator terminal page should diverge from the generic session detail la
 
 ```
 ┌─ Nav bar ───────────────────────────────────────────────────────────────┐
-│  ← Agent Orchestrator                                     orchestrator  │
+│  ← Syntese                                     orchestrator  │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─ Status strip ──────────────────────────────────────────────────────────┐
@@ -76,7 +76,7 @@ These three changes are purely visual and require no structural changes to share
 Same as session detail bar, plus a persistent right-side label:
 
 ```
-← Agent Orchestrator                                    [orchestrator]
+← Syntese                                    [orchestrator]
 ```
 
 ```css

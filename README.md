@@ -1,8 +1,8 @@
-<h1 align="center">Agent Orchestrator — The Orchestration Layer for Parallel AI Agents</h1>
+<h1 align="center">Syntese — The Orchestration Layer for Parallel AI Agents</h1>
 
 <p align="center">
-<a href="https://platform.composio.dev/?utm_source=Github&utm_medium=Banner&utm_content=AgentOrchestrator">
-  <img width="800" alt="Agent Orchestrator banner" src="docs/assets/agent_orchestrator_banner.png">
+<a href="https://platform.composio.dev/?utm_source=Github&utm_medium=Banner&utm_content=Syntese">
+  <img width="800" alt="Syntese banner" src="docs/assets/agent_orchestrator_banner.png">
 </a>
 </p>
 
@@ -10,17 +10,19 @@
 
 Spawn parallel AI coding agents, each in its own git worktree. Agents autonomously fix CI failures, address review comments, and open PRs — you supervise from one dashboard.
 
-[![GitHub stars](https://img.shields.io/github/stars/ComposioHQ/agent-orchestrator?style=flat-square)](https://github.com/ComposioHQ/agent-orchestrator/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/sigvardt/syntese?style=flat-square)](https://github.com/sigvardt/syntese/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![PRs merged](https://img.shields.io/badge/PRs_merged-61-brightgreen?style=flat-square)](https://github.com/ComposioHQ/agent-orchestrator/pulls?q=is%3Amerged)
-[![Tests](https://img.shields.io/badge/test_cases-3%2C288-blue?style=flat-square)](https://github.com/ComposioHQ/agent-orchestrator/releases/tag/metrics-v1)
+[![PRs merged](https://img.shields.io/badge/PRs_merged-61-brightgreen?style=flat-square)](https://github.com/sigvardt/syntese/pulls?q=is%3Amerged)
+[![Tests](https://img.shields.io/badge/test_cases-3%2C288-blue?style=flat-square)](https://github.com/sigvardt/syntese/releases/tag/metrics-v1)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/P9BytfBj)
 
 </div>
 
 ---
 
-Agent Orchestrator manages fleets of AI coding agents working in parallel on your codebase. Each agent gets its own git worktree, its own branch, and its own PR. When CI fails, the agent fixes it. When reviewers leave comments, the agent addresses them. You only get pulled in when human judgment is needed.
+Syntese manages fleets of AI coding agents working in parallel on your codebase. Each agent gets its own git worktree, its own branch, and its own PR. When CI fails, the agent fixes it. When reviewers leave comments, the agent addresses them. You only get pulled in when human judgment is needed.
+
+`ao` remains the backward-compatible CLI alias, so the commands below continue to use `ao`.
 
 **Agent-agnostic** (Claude Code, Codex, Aider) · **Runtime-agnostic** (tmux, Docker) · **Tracker-agnostic** (GitHub, Linear)
 
@@ -29,7 +31,7 @@ Agent Orchestrator manages fleets of AI coding agents working in parallel on you
 ## See it in action
 
 <a href="https://x.com/agent_wrapper/status/2026329204405723180">
-  <img src="docs/assets/demo-video-tweet.png" alt="Agent Orchestrator demo — AI agents building their own orchestrator" width="560">
+  <img src="docs/assets/demo-video-tweet.png" alt="Syntese demo — AI agents building their own orchestrator" width="560">
 </a>
 <br><br>
 <a href="https://x.com/agent_wrapper/status/2026329204405723180"><img src="docs/assets/btn-watch-demo.png" alt="Watch the Demo on X" height="48"></a>
@@ -48,14 +50,14 @@ Agent Orchestrator manages fleets of AI coding agents working in parallel on you
 
 ```bash
 # Install
-git clone https://github.com/ComposioHQ/agent-orchestrator.git
-cd agent-orchestrator && bash scripts/setup.sh
+git clone https://github.com/sigvardt/syntese.git
+cd syntese && bash scripts/setup.sh
 
 # One command to clone, configure, and launch
 ao start https://github.com/your-org/your-repo
 ```
 
-Auto-detects language, package manager, SCM platform, and default branch. Generates `agent-orchestrator.yaml` and starts the dashboard + orchestrator.
+Auto-detects language, package manager, SCM platform, and default branch. Generates `syntese.yaml` and starts the dashboard + orchestrator.
 On supported hosts, `ao start` also brings up the supervised dashboard services automatically. Use `ao services status --strict` to confirm dashboard and websocket readiness.
 
 **Option B — From an existing local repo:**
@@ -113,7 +115,7 @@ All interfaces defined in [`packages/core/src/types.ts`](packages/core/src/types
 ## Configuration
 
 ```yaml
-# agent-orchestrator.yaml
+# syntese.yaml
 port: 3000
 
 defaults:
@@ -159,7 +161,7 @@ CI fails → agent gets the logs and fixes it. Reviewer requests changes → age
 
 If a project needs live verification beyond CI, `verification.postPush` runs a project-defined command after each new pushed `HEAD`. `block-merge` prevents auto-merge and the dashboard merge action until that verification passes.
 
-See [`agent-orchestrator.yaml.example`](agent-orchestrator.yaml.example) for the full reference.
+See [`syntese.yaml.example`](syntese.yaml.example) for the full reference.
 
 ## CLI
 
@@ -192,13 +194,13 @@ ao services install
 ao services status --strict
 ```
 
-## Why Agent Orchestrator?
+## Why Syntese?
 
 Running one AI agent in a terminal is easy. Running 30 across different issues, branches, and PRs is a coordination problem.
 
 **Without orchestration**, you manually: create branches, start agents, check if they're stuck, read CI failures, forward review comments, track which PRs are ready to merge, clean up when done.
 
-**With Agent Orchestrator**, you: `ao spawn` and walk away. The system handles isolation, feedback routing, and status tracking. You review PRs and make decisions — the rest is automated.
+**With Syntese**, you: `ao spawn` and walk away. The system handles isolation, feedback routing, and status tracking. You review PRs and make decisions — the rest is automated.
 
 ## Prerequisites
 

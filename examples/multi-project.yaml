@@ -1,7 +1,7 @@
 # Managing multiple projects with different trackers
 # Shows how to configure multiple repos with different settings
 
-dataDir: ~/.agent-orchestrator
+dataDir: ~/.syntese
 worktreeDir: ~/.worktrees
 
 defaults:

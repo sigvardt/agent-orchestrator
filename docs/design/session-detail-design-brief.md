@@ -24,7 +24,7 @@ The session detail page is a **single-task focused view**, not a dashboard. The 
 
 ```
 ┌─ Nav bar ───────────────────────────────────────────────────────────────┐
-│  ← Agent Orchestrator                                                   │
+│  ← Syntese                                                   │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─ Header ────────────────────────────────────────────────────────────────┐
@@ -82,11 +82,11 @@ border-bottom: 1px solid var(--border-subtle);
 padding: 0 32px;
 ```
 
-**Back link**: `← Agent Orchestrator` in `--text-secondary`. On hover: `--text-primary`. No underline, `tracking-wide`.
+**Back link**: `← Syntese` in `--text-secondary`. On hover: `--text-primary`. No underline, `tracking-wide`.
 
 **Addition (not currently present)**: Show current session ID as a breadcrumb:
 ```
-← Agent Orchestrator  /  ao-58
+← Syntese  /  ao-58
 ```
 `ao-58` in monospace, `--text-muted`. Helps orient the user without reading the header.
 
@@ -295,7 +295,7 @@ Recommended:
 
 | Priority | Change | File | Notes |
 |----------|--------|------|-------|
-| 1 | Breadcrumb in nav: `← Agent Orchestrator / ao-58` | `SessionDetail.tsx` | Orientation |
+| 1 | Breadcrumb in nav: `← Syntese / ao-58` | `SessionDetail.tsx` | Orientation |
 | 2 | Activity indicator: CSS dot instead of emoji | `SessionDetail.tsx` — `activityLabel` map | Visual precision |
 | 3 | "Ready to merge" → banner card instead of text line | `SessionDetail.tsx` — `PRCard` | Primary action prominence |
 | 4 | Terminal theme: `#0A0A0F` bg, `#5B7EF8` cursor, JetBrains Mono | `DirectTerminal.tsx` | Terminal quality |
