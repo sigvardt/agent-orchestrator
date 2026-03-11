@@ -238,6 +238,8 @@ export interface RuntimeCreateConfig {
   workspacePath: string;
   launchCommand: string;
   environment: Record<string, string>;
+  /** Environment variable names to unset in the runtime shell before launch. */
+  excludeEnvironment?: string[];
 }
 
 /** Opaque handle returned by runtime.create() */
@@ -1004,6 +1006,18 @@ export interface ReactionResult {
   resultingStatus?: SessionStatus;
 }
 
+/**
+ * Runtime shell environment policy.
+ *
+ * Variables listed in `exclude` are removed from spawned session shells before
+ * the agent launch command runs. This is used to prevent host API key leakage
+ * into isolated runtime sessions.
+ */
+export interface ShellEnvironmentPolicy {
+  /** Environment variable names to unset before launch. */
+  exclude: string[];
+}
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -1052,6 +1066,9 @@ export interface OrchestratorConfig {
 
   /** Per-account capacity/auth configuration (legacy normalized shape; backward compatible) */
   accounts?: Record<string, AccountConfig>;
+
+  /** Runtime shell env filtering policy applied before session launch. */
+  shellEnvironmentPolicy?: ShellEnvironmentPolicy;
 }
 
 // =============================================================================

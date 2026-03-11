@@ -7,6 +7,7 @@
 
 // Types — everything plugins and consumers need
 export * from "./types.js";
+export type { ShellEnvironmentPolicy } from "./types.js";
 
 // Config — YAML loader + validation
 export {
