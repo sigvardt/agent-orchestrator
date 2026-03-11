@@ -230,6 +230,40 @@ progressChecks:
       expect(config.progressChecks.signals.testPatterns).toContain("pnpm test");
     });
 
+    it("parses progress checkpoint reactions and merges checkpoint defaults", () => {
+      const configPath = join(testDir, "checkpoint-reaction-config.yaml");
+
+      writeFileSync(
+        configPath,
+        `
+projects:
+  test-project:
+    repo: test/repo
+    path: ${testDir}
+    defaultBranch: main
+reactions:
+  progress-checkpoints:
+    firstCommit: 15m
+    firstPR: 45m
+    action: send-to-agent
+    checkpointMessage: Push your work now
+`,
+      );
+
+      const config = loadConfig(configPath);
+
+      expect(config.reactions["progress-checkpoints"]).toEqual(
+        expect.objectContaining({
+          auto: true,
+          action: "send-to-agent",
+          priority: "warning",
+          firstCommit: "15m",
+          firstPR: "45m",
+          checkpointMessage: "Push your work now",
+        }),
+      );
+    });
+
     it("loads project verification config", () => {
       const configPath = join(testDir, "verification-config.yaml");
       writeFileSync(

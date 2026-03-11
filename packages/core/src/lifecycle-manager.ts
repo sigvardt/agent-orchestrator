@@ -446,6 +446,23 @@ interface ProgressGitState {
   hasPushed: boolean;
 }
 
+type ProgressCheckpointKey = "firstCommit" | "firstPR";
+
+interface ProgressCheckpointCandidate {
+  key: ProgressCheckpointKey;
+  threshold: string;
+  thresholdMs: number;
+  gitState: ProgressGitState | null;
+}
+
+const PROGRESS_CHECKPOINT_REACTION_KEY = "progress-checkpoints";
+const PROGRESS_CHECKPOINT_RESET_AT_METADATA_KEY = "progressCheckpointResetAt";
+const PROGRESS_CHECKPOINT_MISS_COUNT_METADATA_KEY = "progressCheckpointMissCount";
+const PROGRESS_CHECKPOINT_FIRED_AT_METADATA_KEYS: Record<ProgressCheckpointKey, string> = {
+  firstCommit: "progressCheckpointFirstCommitFiredAt",
+  firstPR: "progressCheckpointFirstPRFiredAt",
+};
+
 function createProgressSignalHistory(): ProgressSignalHistory {
   return {
     errorPatterns: new Set<string>(),
@@ -711,6 +728,15 @@ function createProgressSnapshotIdempotencyKey(
 ): string {
   return createHash("sha256")
     .update([sessionId, "progress-check", String(snapshotNumber)].join(":"))
+    .digest("hex");
+}
+
+function createProgressCheckpointIdempotencyKey(
+  sessionId: SessionId,
+  checkpointKey: ProgressCheckpointKey,
+): string {
+  return createHash("sha256")
+    .update([sessionId, "progress-checkpoint", checkpointKey].join(":"))
     .digest("hex");
 }
 
@@ -1026,6 +1052,59 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         error,
       });
       return fallbackMessage;
+    }
+  }
+
+  function resolveProgressCheckpointBaseAtMs(session: Session): number {
+    const resetAtMs = parseTimestampMs(session.metadata[PROGRESS_CHECKPOINT_RESET_AT_METADATA_KEY]);
+    if (resetAtMs === null) {
+      return session.createdAt.getTime();
+    }
+
+    return Math.max(session.createdAt.getTime(), resetAtMs);
+  }
+
+  function resolveProgressCheckpointPriority(
+    priority: EventPriority | undefined,
+    missCount: number,
+  ): EventPriority {
+    if (missCount >= 2) {
+      return "urgent";
+    }
+
+    return priority ?? "warning";
+  }
+
+  function buildProgressCheckpointNotificationMessage(
+    session: Session,
+    checkpoint: ProgressCheckpointCandidate,
+  ): string {
+    switch (checkpoint.key) {
+      case "firstCommit":
+        return `${session.id}: missed firstCommit checkpoint after ${checkpoint.threshold} without any commits`;
+      case "firstPR":
+        return `${session.id}: missed firstPR checkpoint after ${checkpoint.threshold} without opening a PR`;
+      default:
+        return `${session.id}: missed progress checkpoint`;
+    }
+  }
+
+  function buildProgressCheckpointAgentMessage(
+    reactionConfig: ReactionConfig,
+    checkpoint: ProgressCheckpointCandidate,
+  ): string {
+    const configuredMessage = reactionConfig.checkpointMessage ?? reactionConfig.message;
+    if (configuredMessage) {
+      return configuredMessage;
+    }
+
+    switch (checkpoint.key) {
+      case "firstCommit":
+        return `You've been working for ${checkpoint.threshold} without making any commits. Please commit your current progress, push it, and open a draft PR if the work is ready for review.`;
+      case "firstPR":
+        return `You've been working for ${checkpoint.threshold} without opening a PR. Please push your current progress and open a draft PR now.`;
+      default:
+        return "Please push your current progress and open a draft PR.";
     }
   }
 
@@ -2500,6 +2579,185 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     if (reactionConfig.auto === false) return null;
     return reactionConfig;
   }
+
+  function getProgressCheckpointConfigForSession(session: Session): ReactionConfig | null {
+    const reactionConfig = getReactionConfigForSession(session, PROGRESS_CHECKPOINT_REACTION_KEY);
+    if (!reactionConfig) {
+      return null;
+    }
+
+    const firstCommitThreshold =
+      typeof reactionConfig.firstCommit === "string" ? reactionConfig.firstCommit : null;
+    const firstPrThreshold = typeof reactionConfig.firstPR === "string" ? reactionConfig.firstPR : null;
+    const firstCommitMs = firstCommitThreshold ? parseDuration(firstCommitThreshold) : 0;
+    const firstPrMs = firstPrThreshold ? parseDuration(firstPrThreshold) : 0;
+
+    if (firstCommitMs <= 0 && firstPrMs <= 0) {
+      return null;
+    }
+
+    return reactionConfig;
+  }
+
+  async function fireProgressCheckpoint(
+    session: Session,
+    reactionConfig: ReactionConfig,
+    checkpoint: ProgressCheckpointCandidate,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const nowIso = now.toISOString();
+    const missCount = parseInteger(session.metadata[PROGRESS_CHECKPOINT_MISS_COUNT_METADATA_KEY]) + 1;
+    const priority = resolveProgressCheckpointPriority(reactionConfig.priority, missCount);
+    const checkpointBaseAtMs = resolveProgressCheckpointBaseAtMs(session);
+    const firedAtKey = PROGRESS_CHECKPOINT_FIRED_AT_METADATA_KEYS[checkpoint.key];
+
+    updateSessionMetadata(session, {
+      [firedAtKey]: nowIso,
+      [PROGRESS_CHECKPOINT_MISS_COUNT_METADATA_KEY]: String(missCount),
+    });
+
+    logLifecycle("info", "progress_checkpoint.triggered", {
+      pollId: pollStats?.pollId,
+      projectId: session.projectId,
+      sessionId: session.id,
+      checkpoint: checkpoint.key,
+      threshold: checkpoint.threshold,
+      missCount,
+      priority,
+    });
+
+    const event = createEvent("reaction.triggered", {
+      sessionId: session.id,
+      projectId: session.projectId,
+      message: buildProgressCheckpointNotificationMessage(session, checkpoint),
+      data: {
+        reactionKey: PROGRESS_CHECKPOINT_REACTION_KEY,
+        checkpoint: checkpoint.key,
+        threshold: checkpoint.threshold,
+        missCount,
+        checkpointPriority: priority,
+        checkpointBaseAt: new Date(checkpointBaseAtMs).toISOString(),
+        checkpointAgeMinutes: toElapsedMinutes(checkpointBaseAtMs, nowMs),
+        sessionAgeMinutes: toElapsedMinutes(session.createdAt.getTime(), nowMs),
+        commitsSinceSpawn: checkpoint.gitState?.commitsSinceSpawn ?? 0,
+        branch: checkpoint.gitState?.branch ?? session.branch,
+        hasPR: Boolean(session.pr),
+        prNumber: session.pr?.number,
+      },
+      idempotencyKey: createProgressCheckpointIdempotencyKey(session.id, checkpoint.key),
+      timestamp: now,
+    });
+
+    if (reactionConfig.action === "send-to-agent" && reactionConfig.auto !== false) {
+      const message = buildProgressCheckpointAgentMessage(reactionConfig, checkpoint);
+
+      try {
+        await sessionManager.send(session.id, message);
+        logLifecycle("info", "progress_checkpoint.sent_to_agent", {
+          pollId: pollStats?.pollId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          checkpoint: checkpoint.key,
+          missCount,
+        });
+        return;
+      } catch (error) {
+        incrementPollError(pollStats);
+        logLifecycle("error", "progress_checkpoint.send_to_agent.failed", {
+          pollId: pollStats?.pollId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          checkpoint: checkpoint.key,
+          missCount,
+          error,
+        });
+      }
+    }
+
+    await notifyHuman(event, priority, pollStats);
+  }
+
+  async function maybeFireProgressCheckpoint(
+    session: Session,
+    pollStats?: LifecyclePollStats,
+  ): Promise<void> {
+    if (isOrchestratorSession(session)) {
+      return;
+    }
+
+    if (INACTIVE_SESSION_STATUSES.has(getEffectiveSessionStatus(session))) {
+      return;
+    }
+
+    const reactionConfig = getProgressCheckpointConfigForSession(session);
+    if (!reactionConfig) {
+      return;
+    }
+
+    const nowMs = Date.now();
+    const checkpointAgeMs = nowMs - resolveProgressCheckpointBaseAtMs(session);
+    const candidates: ProgressCheckpointCandidate[] = [];
+    let gitState: ProgressGitState | null = null;
+
+    const firstCommitThreshold =
+      typeof reactionConfig.firstCommit === "string" ? reactionConfig.firstCommit : null;
+    const firstPrThreshold =
+      typeof reactionConfig.firstPR === "string" ? reactionConfig.firstPR : null;
+    const firstCommitMs = firstCommitThreshold ? parseDuration(firstCommitThreshold) : 0;
+    const firstPrMs = firstPrThreshold ? parseDuration(firstPrThreshold) : 0;
+
+    if (
+      firstCommitMs > 0 &&
+      checkpointAgeMs >= firstCommitMs &&
+      !session.pr &&
+      !session.metadata[PROGRESS_CHECKPOINT_FIRED_AT_METADATA_KEYS.firstCommit]
+    ) {
+      gitState = await collectGitState(session, nowMs);
+      if (gitState.commitsSinceSpawn === 0) {
+        candidates.push({
+          key: "firstCommit",
+          threshold: firstCommitThreshold ?? "",
+          thresholdMs: firstCommitMs,
+          gitState,
+        });
+      }
+    }
+
+    if (
+      firstPrMs > 0 &&
+      checkpointAgeMs >= firstPrMs &&
+      !session.pr &&
+      !session.metadata[PROGRESS_CHECKPOINT_FIRED_AT_METADATA_KEYS.firstPR]
+    ) {
+      candidates.push({
+        key: "firstPR",
+        threshold: firstPrThreshold ?? "",
+        thresholdMs: firstPrMs,
+        gitState,
+      });
+    }
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    candidates.sort((left, right) => {
+      if (left.thresholdMs !== right.thresholdMs) {
+        return left.thresholdMs - right.thresholdMs;
+      }
+
+      if (left.key === right.key) {
+        return 0;
+      }
+
+      return left.key === "firstCommit" ? -1 : 1;
+    });
+
+    await fireProgressCheckpoint(session, reactionConfig, candidates[0], pollStats);
+  }
+
   function updateSessionMetadata(session: Session, updates: Partial<Record<string, string>>): void {
     const project = config.projects[session.projectId];
     if (!project) return;
@@ -3133,6 +3391,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     if (newStatus === oldStatus) {
       await maybeRefirePersistentReaction(session, newStatus, pollStats);
     }
+
+    await maybeFireProgressCheckpoint(session, pollStats);
 
     await maybeRecoverOrphanedPR(session, newStatus, pollStats);
   }

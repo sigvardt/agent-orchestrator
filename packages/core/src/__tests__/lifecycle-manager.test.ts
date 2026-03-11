@@ -404,6 +404,293 @@ describe("progress snapshots", () => {
   });
 });
 
+describe("progress checkpoints", () => {
+  it("fires the firstCommit checkpoint once and records metadata", async () => {
+    config.notificationRouting.warning = ["desktop"];
+    config.reactions = {
+      "progress-checkpoints": {
+        auto: true,
+        action: "notify",
+        priority: "warning",
+        firstCommit: "15m",
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const createdAt = new Date(Date.now() - 20 * 60_000);
+    const session = makeSession({
+      status: "working",
+      workspacePath: null,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/test",
+        createdAt: createdAt.toISOString(),
+      },
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "working",
+      project: "my-app",
+      createdAt: createdAt.toISOString(),
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "reaction.triggered",
+        priority: "warning",
+      }),
+    );
+    expect(mockNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reactionKey: "progress-checkpoints",
+          checkpoint: "firstCommit",
+          missCount: 1,
+        }),
+      }),
+    );
+
+    const metadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(metadata?.["progressCheckpointFirstCommitFiredAt"]).toBeDefined();
+    expect(metadata?.["progressCheckpointMissCount"]).toBe("1");
+
+    await lm.check("app-1");
+
+    expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it("escalates the second missed checkpoint to urgent", async () => {
+    config.notificationRouting.warning = ["desktop"];
+    config.notificationRouting.urgent = ["desktop"];
+    config.reactions = {
+      "progress-checkpoints": {
+        auto: true,
+        action: "notify",
+        priority: "warning",
+        firstCommit: "15m",
+        firstPR: "45m",
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const createdAt = new Date(Date.now() - 50 * 60_000);
+    const session = makeSession({
+      status: "working",
+      workspacePath: null,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/test",
+        createdAt: createdAt.toISOString(),
+      },
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "working",
+      project: "my-app",
+      createdAt: createdAt.toISOString(),
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+    await lm.check("app-1");
+
+    expect(mockNotifier.notify).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(mockNotifier.notify).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        priority: "warning",
+        data: expect.objectContaining({ checkpoint: "firstCommit", missCount: 1 }),
+      }),
+    );
+    expect(vi.mocked(mockNotifier.notify).mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        priority: "urgent",
+        data: expect.objectContaining({ checkpoint: "firstPR", missCount: 2 }),
+      }),
+    );
+  });
+
+  it("uses progressCheckpointResetAt as the checkpoint baseline", async () => {
+    config.notificationRouting.warning = ["desktop"];
+    config.reactions = {
+      "progress-checkpoints": {
+        auto: true,
+        action: "notify",
+        priority: "warning",
+        firstCommit: "15m",
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const createdAt = new Date(Date.now() - 60 * 60_000);
+    const resetAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const session = makeSession({
+      status: "working",
+      workspacePath: null,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/test",
+        createdAt: createdAt.toISOString(),
+        progressCheckpointResetAt: resetAt,
+      },
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "working",
+      project: "my-app",
+      createdAt: createdAt.toISOString(),
+      progressCheckpointResetAt: resetAt,
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockNotifier.notify).not.toHaveBeenCalled();
+  });
+
+  it("sends the configured checkpoint nudge to the agent", async () => {
+    config.notificationRouting.warning = ["desktop"];
+    config.reactions = {
+      "progress-checkpoints": {
+        auto: true,
+        action: "send-to-agent",
+        firstPR: "45m",
+        checkpointMessage: "Please push your current branch and open a draft PR now.",
+      },
+    };
+
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier" && name === "desktop") return mockNotifier;
+        return null;
+      }),
+    };
+
+    const createdAt = new Date(Date.now() - 50 * 60_000);
+    const session = makeSession({
+      status: "working",
+      workspacePath: null,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/test",
+        createdAt: createdAt.toISOString(),
+      },
+    });
+
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feat/test",
+      status: "working",
+      project: "my-app",
+      createdAt: createdAt.toISOString(),
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithNotifier,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockSessionManager.send).toHaveBeenCalledWith(
+      "app-1",
+      "Please push your current branch and open a draft PR now.",
+    );
+    expect(mockNotifier.notify).not.toHaveBeenCalled();
+  });
+});
+
 describe("poll logging", () => {
   it("logs poll boundaries, transitions, and notification results", async () => {
     config.notificationRouting.info = ["desktop"];

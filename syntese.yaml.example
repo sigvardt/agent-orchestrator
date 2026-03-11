@@ -140,6 +140,13 @@ projects:
 #     action: send-to-agent
 #     escalateAfter: 30m
 #
+#   progress-checkpoints:
+#     firstCommit: 15m
+#     firstPR: 45m
+#     action: send-to-agent
+#     priority: warning
+#     checkpointMessage: Please push your current progress and open a draft PR.
+#
 #   approved-and-green:
 #     auto: false
 #     action: notify           # set to auto-merge for automatic merging

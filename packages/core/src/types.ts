@@ -977,6 +977,15 @@ export interface ReactionConfig {
   /** Maximum session age before agent-stuck fires when no PR exists (e.g. "30m") */
   maxRuntime?: string;
 
+  /** Progress checkpoint threshold for the first pushed commit (e.g. "15m") */
+  firstCommit?: string;
+
+  /** Progress checkpoint threshold for the first opened PR (e.g. "45m") */
+  firstPR?: string;
+
+  /** Optional custom nudge text for progress-checkpoint send-to-agent reactions */
+  checkpointMessage?: string;
+
   /** Whether to include a summary in the notification */
   includeSummary?: boolean;
 }
@@ -1363,6 +1372,10 @@ export interface SessionMetadata {
   opencodeSessionId?: string;
   lastProgressSnapshotAt?: string;
   progressSnapshotCount?: string;
+  progressCheckpointResetAt?: string;
+  progressCheckpointMissCount?: string;
+  progressCheckpointFirstCommitFiredAt?: string;
+  progressCheckpointFirstPRFiredAt?: string;
 }
 
 // =============================================================================
