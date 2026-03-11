@@ -52,6 +52,20 @@ ao services status --strict
 
 `pnpm dev` and `ao dashboard` are the foreground development paths. `ao start` and `ao services` are the durable runtime path.
 
+### Shell Environment Policy
+
+If you need to prevent parent-shell secrets from leaking into tmux agent sessions, configure
+`shellEnvironmentPolicy.exclude` in `syntese.yaml`.
+
+```yaml
+shellEnvironmentPolicy:
+  exclude:
+    - OPENAI_API_KEY
+    - ANTHROPIC_API_KEY
+```
+
+At runtime, these variables are unset inside the tmux pane before the agent launch command executes.
+
 ### Project Structure
 
 ```
