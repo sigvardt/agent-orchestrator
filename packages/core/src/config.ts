@@ -42,7 +42,29 @@ const MISSING_CONFIG_ERROR =
   `No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run \`${PRIMARY_CLI_COMMAND} init\` to create one.`;
 
 const ACCOUNT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+const ENV_VAR_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const KNOWN_ACCOUNT_AGENTS = new Set(listBuiltinPluginNames("agent"));
+
+/**
+ * Warn for shellEnvironmentPolicy.exclude entries that do not look like
+ * conventional shell variable identifiers.
+ */
+function warnInvalidShellEnvironmentPolicy(config: OrchestratorConfig): void {
+  const excluded = config.shellEnvironmentPolicy?.exclude ?? [];
+  if (excluded.length === 0) return;
+
+  const invalid = excluded.filter((entry) => !ENV_VAR_NAME_PATTERN.test(entry));
+  if (invalid.length === 0) return;
+
+  process.emitWarning(
+    `shellEnvironmentPolicy.exclude contains non-standard env var names: ${invalid.join(", ")}. ` +
+      "Expected shell variable names like FOO or BAR_BAZ. These entries are still applied as raw unset targets.",
+    {
+      code: "SYNTESE_SHELL_ENV_POLICY_INVALID_EXCLUDE",
+      type: "SynteseConfigWarning",
+    },
+  );
+}
 
 function inferScmPlugin(project: {
   repo: string;
@@ -264,6 +286,10 @@ const AgentPoolConfigSchema = z.object({
   accounts: z.array(ConfiguredAccountSchema).default([]),
 });
 
+const ShellEnvironmentPolicySchema = z.object({
+  exclude: z.array(z.string()).default([]),
+});
+
 const OrchestratorConfigSchema = z.object({
   port: z.number().default(3000),
   terminalPort: z.number().optional(),
@@ -282,6 +308,7 @@ const OrchestratorConfigSchema = z.object({
   progressChecks: ProgressChecksSchema.default({}),
   agentPool: AgentPoolConfigSchema.optional(),
   accounts: z.record(AccountConfigSchema).optional(),
+  shellEnvironmentPolicy: ShellEnvironmentPolicySchema.optional(),
 });
 
 function normalizeAccounts(config: OrchestratorConfig): OrchestratorConfig {
@@ -676,6 +703,7 @@ export function validateConfig(raw: unknown): OrchestratorConfig {
   config = expandPaths(config);
   config = applyProjectDefaults(config);
   config = applyDefaultReactions(config);
+  warnInvalidShellEnvironmentPolicy(config);
 
   // Validate project uniqueness and prefix collisions
   validateProjectUniqueness(config);

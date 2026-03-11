@@ -5,13 +5,14 @@ import { randomUUID } from "node:crypto";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-  PluginModule,
-  Runtime,
-  RuntimeCreateConfig,
-  RuntimeHandle,
-  RuntimeMetrics,
-  AttachInfo,
+import {
+  shellEscape,
+  type PluginModule,
+  type Runtime,
+  type RuntimeCreateConfig,
+  type RuntimeHandle,
+  type RuntimeMetrics,
+  type AttachInfo,
 } from "@syntese/core";
 
 const execFileAsync = promisify(execFile);
@@ -20,6 +21,7 @@ const PASTE_BUFFER_THRESHOLD = 200;
 const CAPTURE_LINES = 40;
 const CAPTURE_POLL_MS = 250;
 const ENTER_RETRY_DELAYS_MS = [500, 1000, 1500, 2500] as const;
+const PRE_LAUNCH_ENV_SETTLE_MS = 100;
 
 export const manifest = {
   name: "tmux",
@@ -115,6 +117,13 @@ function hasSubmissionStarted(opts: { before: string; after: string; message: st
   return false;
 }
 
+/** Build a shell-safe unset command for configured excluded env variable names. */
+function getUnsetCommand(excludeEnvironment: string[] | undefined): string | null {
+  const excludes = (excludeEnvironment ?? []).map((value) => value.trim()).filter(Boolean);
+  if (excludes.length === 0) return null;
+  return `unset -- ${excludes.map((name) => shellEscape(name)).join(" ")}`;
+}
+
 export function create(): Runtime {
   return {
     name: "tmux",
@@ -131,6 +140,13 @@ export function create(): Runtime {
 
       // Create tmux session in detached mode
       await tmux("new-session", "-d", "-s", sessionName, "-c", config.workspacePath, ...envArgs);
+
+      const unsetCommand = getUnsetCommand(config.excludeEnvironment);
+      if (unsetCommand) {
+        // Run unset in the pane shell before launch so parent-process secrets do not leak to agent CLI.
+        await tmux("send-keys", "-t", sessionName, unsetCommand, "Enter");
+        await sleep(PRE_LAUNCH_ENV_SETTLE_MS);
+      }
 
       // Send the launch command — clean up the session if this fails.
       // Use load-buffer + paste-buffer for long commands to avoid tmux/zsh
