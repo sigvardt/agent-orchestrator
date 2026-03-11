@@ -331,12 +331,24 @@ beforeEach(() => {
   mkdirSync(sessionsDir, { recursive: true });
 });
 
-afterEach(() => {
+afterEach(async () => {
   process.env.PATH = originalPath;
+
+  // Wait for fire-and-forget capacity writes to settle
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
   // Clean up hash-based directories in ~/.syntese
   const projectBaseDir = getProjectBaseDir(configPath, join(tmpDir, "my-app"));
   if (existsSync(projectBaseDir)) {
     rmSync(projectBaseDir, { recursive: true, force: true });
+  }
+
+  // Clean up account data directories created by tests or incrementAccountConsumed
+  for (const accountId of ["codex", "codex-pro-1", "codex-pro-2", "claude-max-1"]) {
+    const accountDir = getAccountDataDir(accountId);
+    if (existsSync(accountDir)) {
+      rmSync(accountDir, { recursive: true, force: true });
+    }
   }
 
   // Clean up tmpDir

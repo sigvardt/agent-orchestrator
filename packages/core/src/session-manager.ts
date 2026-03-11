@@ -171,14 +171,12 @@ async function isAccountAuthValid(accountId: string, account: AccountConfig): Pr
     return true;
   }
 
-  // Implicit accounts (auto-resolved by agent name, no explicit auth config)
-  // use the system-wide default auth — skip validation.
-  const hasAccountDataDir = existsSync(getAccountDataDir(accountId));
-  if (!account.auth && !hasAccountDataDir) {
+  const isImplicitAccount = Object.keys(account).length === 1 && "agent" in account;
+  if (isImplicitAccount) {
     return true;
   }
 
-  if (!hasAccountDataDir) {
+  if (!existsSync(getAccountDataDir(accountId))) {
     return false;
   }
 
