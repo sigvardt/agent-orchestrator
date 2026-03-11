@@ -24,7 +24,7 @@ function buildSessionTitle(session: DashboardSession): string {
   let detail: string;
 
   if (isOrchestrator) {
-    detail = "Orchestrator Terminal";
+    detail = "Syntese Terminal";
   } else if (session.pr) {
     detail = `#${session.pr.number} ${truncate(session.pr.branch, 30)}`;
   } else if (session.branch) {

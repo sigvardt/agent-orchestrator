@@ -2,8 +2,8 @@ import React from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 
 const CLI_COMMANDS = [
-  { cmd: "ao start [project]", desc: "Start orchestrator + dashboard" },
-  { cmd: "ao stop [project]", desc: "Stop orchestrator + dashboard" },
+  { cmd: "ao start [project]", desc: "Start Syntese + dashboard" },
+  { cmd: "ao stop [project]", desc: "Stop Syntese + dashboard" },
   { cmd: "ao spawn <project> [issue]", desc: "Spawn a session for an issue" },
   { cmd: "ao batch-spawn <project> <issues...>", desc: "Spawn multiple sessions" },
   { cmd: "ao session ls [-p <project>]", desc: "List all active sessions" },
@@ -15,7 +15,7 @@ const CLI_COMMANDS = [
   { cmd: "ao review-check [project]", desc: "Check PRs and trigger agents" },
   { cmd: "ao dashboard [-p <port>]", desc: "Start the web dashboard" },
   { cmd: "ao open [target]", desc: "Open session(s) in terminal" },
-  { cmd: "ao init [project]", desc: "Initialize config file" },
+  { cmd: "ao init [project]", desc: "Initialize syntese.yaml" },
 ];
 
 export default function CommandsScreen() {

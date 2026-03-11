@@ -221,7 +221,7 @@ export function Dashboard({
       <div className="mb-6 flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-5">
         <div className="flex items-center gap-6">
           <h1 className="text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-text-primary)]">
-            {projectName ?? "Orchestrator"}
+            {projectName ?? "Syntese"}
           </h1>
           <StatusLine stats={liveStats} needsAttention={needsAttention} />
         </div>
@@ -232,7 +232,7 @@ export function Dashboard({
               className="orchestrator-btn flex items-center gap-2 rounded-[7px] px-4 py-2 text-[12px] font-semibold hover:no-underline"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)] opacity-80" />
-              orchestrator
+              Syntese session
               <svg
                 className="h-3 w-3 opacity-70"
                 fill="none"
@@ -286,7 +286,7 @@ export function Dashboard({
       <UsageOverview />
       {globalPause && (
         <div className="mb-6 rounded border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.07)] px-3.5 py-2.5 text-[11px] text-[var(--color-status-attention)]">
-          <span className="font-semibold">Orchestrator paused:</span> {globalPause.reason}. Resume
+          <span className="font-semibold">Syntese paused:</span> {globalPause.reason}. Resume
           after {new Date(globalPause.pausedUntil).toLocaleString()}.
           {globalPause.sourceSessionId ? ` Source: ${globalPause.sourceSessionId}.` : ""}
         </div>

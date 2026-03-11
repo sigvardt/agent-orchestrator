@@ -116,7 +116,7 @@ a:hover {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Orchestrator button ──────────────────────────────────────────────── */
+/* ── Syntese session button ───────────────────────────────────────────── */
 
 .orchestrator-btn {
   color: var(--color-accent);

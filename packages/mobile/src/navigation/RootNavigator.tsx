@@ -77,7 +77,7 @@ export default function RootNavigator() {
         <Stack.Screen
           name="Orchestrator"
           component={OrchestratorScreen}
-          options={{ title: "Orchestrator" }}
+          options={{ title: "Syntese Session" }}
         />
         <Stack.Screen
           name="Commands"

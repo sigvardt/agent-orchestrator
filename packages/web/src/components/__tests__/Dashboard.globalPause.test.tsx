@@ -100,7 +100,7 @@ describe("Dashboard globalPause banner", () => {
       initialGlobalPause: globalPause,
     });
 
-    expect(screen.getByText(/Orchestrator paused:/)).toBeInTheDocument();
+    expect(screen.getByText(/Syntese paused:/)).toBeInTheDocument();
     expect(screen.getByText(/Model rate limit reached/)).toBeInTheDocument();
   });
 
@@ -113,7 +113,7 @@ describe("Dashboard globalPause banner", () => {
       initialGlobalPause: null,
     });
 
-    expect(screen.queryByText(/Orchestrator paused:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Syntese paused:/)).not.toBeInTheDocument();
   });
 
   it("shows banner with custom reason from any provider", async () => {
@@ -140,7 +140,7 @@ describe("Dashboard globalPause banner", () => {
     });
 
     expect(screen.getAllByText("Subscription Usage")).toHaveLength(1);
-    expect(screen.getAllByText(/Orchestrator paused:/)).toHaveLength(1);
+    expect(screen.getAllByText(/Syntese paused:/)).toHaveLength(1);
   });
 
   it("displays source session ID when provided", async () => {
@@ -178,7 +178,7 @@ describe("Dashboard globalPause banner", () => {
 
     render(<Dashboard initialSessions={sessions} stats={defaultStats} initialGlobalPause={null} />);
 
-    expect(screen.queryByText(/Orchestrator paused:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Syntese paused:/)).not.toBeInTheDocument();
 
     await waitFor(() => expect(eventSourceMock.onmessage).not.toBeNull());
 
@@ -205,7 +205,7 @@ describe("Dashboard globalPause banner", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Orchestrator paused:/)).toBeInTheDocument();
+      expect(screen.getByText(/Syntese paused:/)).toBeInTheDocument();
       expect(screen.getByText(/Rate limit from any agent/)).toBeInTheDocument();
     });
   });
@@ -239,7 +239,7 @@ describe("Dashboard globalPause banner", () => {
       />,
     );
 
-    expect(screen.getByText(/Orchestrator paused:/)).toBeInTheDocument();
+    expect(screen.getByText(/Syntese paused:/)).toBeInTheDocument();
 
     await waitFor(() => expect(eventSourceMock.onmessage).not.toBeNull());
 
@@ -266,7 +266,7 @@ describe("Dashboard globalPause banner", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByText(/Orchestrator paused:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Syntese paused:/)).not.toBeInTheDocument();
     });
   });
 });

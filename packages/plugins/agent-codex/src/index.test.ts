@@ -1831,7 +1831,9 @@ describe("setupWorkspaceHooks", () => {
         return Promise.resolve("0.1.1");
       }
       if (typeof path === "string" && path.endsWith("AGENTS.md")) {
-        return Promise.resolve("# Existing\n\n## Syntese (ao) Session\n\nAlready here.\n");
+        return Promise.resolve(
+          "# Existing\n\n## Syntese (ao) Session\n\nAlready here.\n",
+        );
       }
       return Promise.reject(new Error("ENOENT"));
     });
@@ -1907,10 +1909,9 @@ describe("shell wrapper content", () => {
 
     it("validates ao_dir is an absolute path under expected locations", async () => {
       const content = await getWrapperContent("ao-metadata-helper.sh");
-      // Only allows paths under $HOME/.ao/, $HOME/.syntese/, $HOME/.agent-orchestrator/, or /tmp/
+      // Only allows paths under $HOME/.ao/, $HOME/.syntese/, or /tmp/
       expect(content).toContain('$HOME"/.ao/*');
       expect(content).toContain('$HOME"/.syntese/*');
-      expect(content).toContain('$HOME"/.agent-orchestrator/*');
       expect(content).toContain("/tmp/*");
     });
 

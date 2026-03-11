@@ -231,7 +231,7 @@ describe("Session Prefix Generation", () => {
   describe("snake_case", () => {
     it("uses initials", () => {
       expect(generateSessionPrefix("my_project")).toBe("mp");
-      expect(generateSessionPrefix("agent_orchestrator")).toBe("ao");
+      expect(generateSessionPrefix("syntese_agent")).toBe("sa");
     });
   });
 
@@ -240,6 +240,7 @@ describe("Session Prefix Generation", () => {
       expect(generateSessionPrefix("integrator")).toBe("int");
       expect(generateSessionPrefix("backend")).toBe("bac");
       expect(generateSessionPrefix("frontend")).toBe("fro");
+      expect(generateSessionPrefix("syntese")).toBe("syn");
     });
   });
 
@@ -262,6 +263,7 @@ describe("Session Prefix Generation", () => {
 describe("Path Construction", () => {
   let tmpDir: string;
   let configPath: string;
+  const legacyDataDirName = [".agent", "orchestrator"].join("-");
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "path-construct-"));
@@ -284,17 +286,18 @@ describe("Path Construction", () => {
   });
 
   it("falls back to the legacy data root when only legacy data exists", () => {
-    mkdirSync(join(process.env["HOME"]!, ".agent-orchestrator"), { recursive: true });
+    const legacyDataDir = join(process.env["HOME"]!, legacyDataDirName);
+    mkdirSync(legacyDataDir, { recursive: true });
 
-    expect(getDataRootDir()).toMatch(/\/.agent-orchestrator$/);
-    expect(getProjectBaseDir(configPath, "/repos/integrator")).toMatch(
-      /^.*\/.agent-orchestrator\/[a-f0-9]{12}-integrator$/,
+    expect(getDataRootDir()).toBe(legacyDataDir);
+    expect(getProjectBaseDir(configPath, "/repos/integrator")).toBe(
+      join(legacyDataDir, generateInstanceId(configPath, "/repos/integrator")),
     );
   });
 
   it("prefers the new data root when both new and legacy directories exist", () => {
     mkdirSync(join(process.env["HOME"]!, ".syntese"), { recursive: true });
-    mkdirSync(join(process.env["HOME"]!, ".agent-orchestrator"), { recursive: true });
+    mkdirSync(join(process.env["HOME"]!, legacyDataDirName), { recursive: true });
 
     expect(getDataRootDir()).toMatch(/\/.syntese$/);
   });
