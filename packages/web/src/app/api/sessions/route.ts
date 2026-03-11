@@ -38,6 +38,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get("active") === "true";
+    const projectFilter = searchParams.get("project")?.trim() || null;
 
     const { config, registry, sessionManager } = await getServices();
     const coreSessions = await sessionManager.list();
@@ -49,6 +50,9 @@ export async function GET(request: Request) {
 
     // Filter out orchestrator sessions — they get their own button, not a card
     let workerSessions = coreSessions.filter((s) => !s.id.endsWith("-orchestrator"));
+    if (projectFilter) {
+      workerSessions = workerSessions.filter((s) => s.projectId === projectFilter);
+    }
 
     // Convert to dashboard format
     let dashboardSessions = workerSessions.map(sessionToDashboard);
