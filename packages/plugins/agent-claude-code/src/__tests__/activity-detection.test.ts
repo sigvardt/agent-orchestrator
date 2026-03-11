@@ -3,18 +3,21 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { toClaudeProjectPath, create } from "../index.js";
-import type { Session, RuntimeHandle } from "@composio/ao-core";
+import type { Session, RuntimeHandle } from "@syntese/core";
+
+const { fakeHomeState } = vi.hoisted(() => ({
+  fakeHomeState: { value: "" },
+}));
 
 // Mock homedir() so getActivityState looks in our temp dir
 vi.mock("node:os", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
-    homedir: () => fakeHome,
+    homedir: () => fakeHomeState.value,
   };
 });
 
-let fakeHome: string;
 let workspacePath: string;
 let projectDir: string;
 
@@ -94,13 +97,13 @@ describe("Claude Code Activity Detection", () => {
     const agent = create();
 
     beforeEach(() => {
-      fakeHome = mkdtempSync(join(tmpdir(), "ao-activity-test-"));
-      workspacePath = join(fakeHome, "workspace");
+      fakeHomeState.value = mkdtempSync(join(tmpdir(), "ao-activity-test-"));
+      workspacePath = join(fakeHomeState.value, "workspace");
       mkdirSync(workspacePath, { recursive: true });
 
       // Create the Claude project directory matching the workspace path
       const encoded = toClaudeProjectPath(workspacePath);
-      projectDir = join(fakeHome, ".claude", "projects", encoded);
+      projectDir = join(fakeHomeState.value, ".claude", "projects", encoded);
       mkdirSync(projectDir, { recursive: true });
 
       // Mock isProcessRunning to always return true (we test exited separately)
@@ -108,7 +111,8 @@ describe("Claude Code Activity Detection", () => {
     });
 
     afterEach(() => {
-      rmSync(fakeHome, { recursive: true, force: true });
+      rmSync(fakeHomeState.value, { recursive: true, force: true });
+      fakeHomeState.value = "";
       vi.restoreAllMocks();
     });
 
@@ -147,7 +151,7 @@ describe("Claude Code Activity Detection", () => {
 
     it("returns null when project directory does not exist", async () => {
       // Point to a workspace whose project dir doesn't exist
-      const badPath = join(fakeHome, "nonexistent-workspace");
+      const badPath = join(fakeHomeState.value, "nonexistent-workspace");
       expect(await agent.getActivityState(makeSession({ workspacePath: badPath }))).toBeNull();
     });
 

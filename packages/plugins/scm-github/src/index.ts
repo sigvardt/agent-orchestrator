@@ -22,7 +22,7 @@ import {
   type ReviewComment,
   type AutomatedComment,
   type MergeReadiness,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 const execFileAsync = promisify(execFile);
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { escapeRegex, matchesPrefix, findProjectForSession } from "../../src/lib/session-utils.js";
-import type { OrchestratorConfig } from "@composio/ao-core";
+import type { OrchestratorConfig } from "@syntese/core";
 
 describe("escapeRegex", () => {
   it("escapes dots, asterisks, plus, question marks", () => {

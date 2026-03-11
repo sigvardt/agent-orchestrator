@@ -15,7 +15,7 @@ import {
   type SessionManager,
   type ActivityState,
   getSessionsDir,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 const {
   mockTmux,
@@ -71,9 +71,9 @@ vi.mock("../../src/lib/shell.js", () => ({
   },
 }));
 
-vi.mock("@composio/ao-core", async (importOriginal) => {
+vi.mock("@syntese/core", async (importOriginal) => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-  const actual = await importOriginal<typeof import("@composio/ao-core")>();
+  const actual = await importOriginal<typeof import("@syntese/core")>();
   return {
     ...actual,
     loadConfig: () => mockConfigRef.current,
@@ -174,7 +174,7 @@ let consoleSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "ao-status-test-"));
 
-  const configPath = join(tmpDir, "agent-orchestrator.yaml");
+  const configPath = join(tmpDir, "syntese.yaml");
   writeFileSync(configPath, "projects: {}");
 
   mockConfigRef.current = {
@@ -254,7 +254,7 @@ describe("status command", () => {
     await program.parseAsync(["node", "test", "status"]);
 
     const output = consoleSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(output).toContain("AGENT ORCHESTRATOR STATUS");
+    expect(output).toContain("SYNTESE STATUS");
     expect(output).toContain("My App");
   });
 

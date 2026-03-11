@@ -17,7 +17,7 @@ import type { OrchestratorConfig, PluginRegistry } from "../types.js";
 
 function makeConfig(rootDir: string): OrchestratorConfig {
   return {
-    configPath: join(rootDir, "agent-orchestrator.yaml"),
+    configPath: join(rootDir, "syntese.yaml"),
     port: 3000,
     readyThresholdMs: 300_000,
     defaults: {
@@ -96,7 +96,7 @@ function makeAssessment(overrides: Partial<RecoveryAssessment> = {}): RecoveryAs
 
 function makeContext(rootDir: string, overrides: Partial<RecoveryContext> = {}): RecoveryContext {
   return {
-    configPath: join(rootDir, "agent-orchestrator.yaml"),
+    configPath: join(rootDir, "syntese.yaml"),
     recoveryConfig: {
       ...DEFAULT_RECOVERY_CONFIG,
       logPath: join(rootDir, "recovery.log"),
@@ -119,7 +119,7 @@ describe("recoverSession", () => {
     rootDir = join(tmpdir(), `ao-recovery-${randomUUID()}`);
     mkdirSync(rootDir, { recursive: true });
     mkdirSync(join(rootDir, "project"), { recursive: true });
-    writeFileSync(join(rootDir, "agent-orchestrator.yaml"), "projects: {}\n", "utf-8");
+    writeFileSync(join(rootDir, "syntese.yaml"), "projects: {}\n", "utf-8");
 
     const config = makeConfig(rootDir);
     const registry = makeRegistry();
@@ -140,7 +140,7 @@ describe("recoverSession", () => {
     rootDir = join(tmpdir(), `ao-recovery-${randomUUID()}`);
     mkdirSync(rootDir, { recursive: true });
     mkdirSync(join(rootDir, "project"), { recursive: true });
-    writeFileSync(join(rootDir, "agent-orchestrator.yaml"), "projects: {}\n", "utf-8");
+    writeFileSync(join(rootDir, "syntese.yaml"), "projects: {}\n", "utf-8");
 
     const config = makeConfig(rootDir);
     const registry = makeRegistry();
@@ -169,7 +169,7 @@ describe("recoverSession", () => {
     rootDir = join(tmpdir(), `ao-recovery-${randomUUID()}`);
     mkdirSync(rootDir, { recursive: true });
     mkdirSync(join(rootDir, "project"), { recursive: true });
-    writeFileSync(join(rootDir, "agent-orchestrator.yaml"), "projects: {}\n", "utf-8");
+    writeFileSync(join(rootDir, "syntese.yaml"), "projects: {}\n", "utf-8");
 
     const config = makeConfig(rootDir);
     const registry = makeRegistry();
@@ -210,7 +210,7 @@ describe("escalateSession", () => {
     rootDir = join(tmpdir(), `ao-recovery-${randomUUID()}`);
     mkdirSync(rootDir, { recursive: true });
     mkdirSync(join(rootDir, "project"), { recursive: true });
-    writeFileSync(join(rootDir, "agent-orchestrator.yaml"), "projects: {}\n", "utf-8");
+    writeFileSync(join(rootDir, "syntese.yaml"), "projects: {}\n", "utf-8");
 
     const config = makeConfig(rootDir);
     const registry = makeRegistry();
@@ -242,7 +242,7 @@ describe("recovery manager and scanner", () => {
     rootDir = join(tmpdir(), `ao-recovery-${randomUUID()}`);
     mkdirSync(rootDir, { recursive: true });
     mkdirSync(join(rootDir, "project"), { recursive: true });
-    writeFileSync(join(rootDir, "agent-orchestrator.yaml"), "projects: {}\n", "utf-8");
+    writeFileSync(join(rootDir, "syntese.yaml"), "projects: {}\n", "utf-8");
 
     const config = makeConfig(rootDir);
     const sessionsDir = getSessionsDir(config.configPath, config.projects.app.path);
@@ -276,7 +276,7 @@ describe("recovery manager and scanner", () => {
     rootDir = join(tmpdir(), `ao-recovery-${randomUUID()}`);
     mkdirSync(rootDir, { recursive: true });
     mkdirSync(join(rootDir, "project"), { recursive: true });
-    writeFileSync(join(rootDir, "agent-orchestrator.yaml"), "projects: {}\n", "utf-8");
+    writeFileSync(join(rootDir, "syntese.yaml"), "projects: {}\n", "utf-8");
 
     const config = makeConfig(rootDir);
     const sessionsDir = getSessionsDir(config.configPath, config.projects.app.path);

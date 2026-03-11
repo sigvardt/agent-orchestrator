@@ -1,6 +1,6 @@
-# Syntese core package (`@agent-orchestrator/core`)
+# @syntese/core
 
-Core services, types, and configuration for Syntese. The published package name remains `@agent-orchestrator/core` until the package rename lands.
+Core services, types, and configuration for the Syntese system.
 
 ## What's Here
 
@@ -126,7 +126,7 @@ Loads and validates `syntese.yaml`:
 
 1. Edit `src/types.ts` → `Session` interface
 2. Edit `src/services/session-manager.ts` → initialize field in `spawn()`
-3. Rebuild: `pnpm --filter @agent-orchestrator/core build`
+3. Rebuild: `pnpm --filter @syntese/core build`
 
 ### Adding an Event Type
 
@@ -142,7 +142,7 @@ Loads and validates `syntese.yaml`:
 
 ### Feedback Tools (v1)
 
-`@composio/ao-core` exports two structured feedback tool contracts:
+`@syntese/core` exports two structured feedback tool contracts:
 
 - `bug_report`
 - `improvement_suggestion`
@@ -159,7 +159,7 @@ Both share the same required input fields:
 Example:
 
 ```ts
-import { FEEDBACK_TOOL_NAMES, FeedbackReportStore, getFeedbackReportsDir } from "@composio/ao-core";
+import { FEEDBACK_TOOL_NAMES, FeedbackReportStore, getFeedbackReportsDir } from "@syntese/core";
 
 const reportsDir = getFeedbackReportsDir(configPath, projectPath);
 const store = new FeedbackReportStore(reportsDir);
@@ -189,13 +189,13 @@ Migration notes:
 
 ```bash
 # Run all core tests
-pnpm --filter @agent-orchestrator/core test
+pnpm --filter @syntese/core test
 
 # Run in watch mode
-pnpm --filter @agent-orchestrator/core test -- --watch
+pnpm --filter @syntese/core test -- --watch
 
 # Run specific test
-pnpm --filter @agent-orchestrator/core test -- session-manager.test.ts
+pnpm --filter @syntese/core test -- session-manager.test.ts
 ```
 
 Tests are in `src/__tests__/`:
@@ -210,10 +210,10 @@ Tests are in `src/__tests__/`:
 
 ```bash
 # Build core
-pnpm --filter @agent-orchestrator/core build
+pnpm --filter @syntese/core build
 
 # Typecheck
-pnpm --filter @agent-orchestrator/core typecheck
+pnpm --filter @syntese/core typecheck
 ```
 
 This package is a dependency of all other packages. Build it first if working on the codebase.

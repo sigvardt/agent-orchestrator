@@ -81,7 +81,7 @@ npm link -g packages/cli
 ao --version
 ```
 
-> **Coming soon:** `npm install -g @composio/ao-cli` once published to npm.
+> **Coming soon:** `npm install -g @syntese/cli` once published to npm.
 
 **If you don't have pnpm:**
 
@@ -410,7 +410,7 @@ curl -X POST -H 'Content-type: application/json' \
 To add a custom tracker (Jira, Asana, etc.), create a plugin:
 
 1. See plugin examples in `packages/plugins/tracker-*/`
-2. Implement the `Tracker` interface from `@composio/ao-core`
+2. Implement the `Tracker` interface from `@syntese/core`
 3. Register your plugin in the config
 
 See [CLAUDE.md](./CLAUDE.md) for plugin development guidelines.

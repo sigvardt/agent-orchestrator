@@ -1,11 +1,12 @@
 {
-  "name": "@composio/ao-cli",
+  "name": "@syntese/cli",
   "version": "0.1.0",
-  "description": "CLI for agent-orchestrator — the `ao` command",
+  "description": "CLI for syntese — the `ao` and `syntese` commands",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "ao": "dist/index.js"
+    "ao": "dist/index.js",
+    "syntese": "dist/index.js"
   },
   "main": "dist/index.js",
   "files": [
@@ -14,12 +15,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ComposioHQ/agent-orchestrator.git",
+    "url": "https://github.com/sigvardt/syntese.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/ComposioHQ/agent-orchestrator",
+  "homepage": "https://github.com/sigvardt/syntese",
   "bugs": {
-    "url": "https://github.com/ComposioHQ/agent-orchestrator/issues"
+    "url": "https://github.com/sigvardt/syntese/issues"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -33,25 +34,25 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@composio/ao-core": "workspace:*",
-    "@composio/ao-plugin-agent-aider": "workspace:*",
-    "@composio/ao-plugin-agent-claude-code": "workspace:*",
-    "@composio/ao-plugin-agent-codex": "workspace:*",
-    "@composio/ao-plugin-agent-opencode": "workspace:*",
-    "@composio/ao-plugin-notifier-composio": "workspace:*",
-    "@composio/ao-plugin-notifier-desktop": "workspace:*",
-    "@composio/ao-plugin-notifier-openclaw": "workspace:*",
-    "@composio/ao-plugin-notifier-slack": "workspace:*",
-    "@composio/ao-plugin-notifier-webhook": "workspace:*",
-    "@composio/ao-plugin-runtime-process": "workspace:*",
-    "@composio/ao-plugin-runtime-tmux": "workspace:*",
-    "@composio/ao-plugin-scm-github": "workspace:*",
-    "@composio/ao-plugin-terminal-iterm2": "workspace:*",
-    "@composio/ao-plugin-terminal-web": "workspace:*",
-    "@composio/ao-plugin-tracker-github": "workspace:*",
-    "@composio/ao-plugin-tracker-linear": "workspace:*",
-    "@composio/ao-plugin-workspace-clone": "workspace:*",
-    "@composio/ao-plugin-workspace-worktree": "workspace:*",
+    "@syntese/core": "workspace:*",
+    "@syntese/plugin-agent-aider": "workspace:*",
+    "@syntese/plugin-agent-claude-code": "workspace:*",
+    "@syntese/plugin-agent-codex": "workspace:*",
+    "@syntese/plugin-agent-opencode": "workspace:*",
+    "@syntese/plugin-notifier-composio": "workspace:*",
+    "@syntese/plugin-notifier-desktop": "workspace:*",
+    "@syntese/plugin-notifier-openclaw": "workspace:*",
+    "@syntese/plugin-notifier-slack": "workspace:*",
+    "@syntese/plugin-notifier-webhook": "workspace:*",
+    "@syntese/plugin-runtime-process": "workspace:*",
+    "@syntese/plugin-runtime-tmux": "workspace:*",
+    "@syntese/plugin-scm-github": "workspace:*",
+    "@syntese/plugin-terminal-iterm2": "workspace:*",
+    "@syntese/plugin-terminal-web": "workspace:*",
+    "@syntese/plugin-tracker-github": "workspace:*",
+    "@syntese/plugin-tracker-linear": "workspace:*",
+    "@syntese/plugin-workspace-clone": "workspace:*",
+    "@syntese/plugin-workspace-worktree": "workspace:*",
     "chalk": "^5.4.0",
     "commander": "^13.0.0",
     "ora": "^8.1.0",

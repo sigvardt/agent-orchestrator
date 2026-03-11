@@ -669,7 +669,7 @@ syntese/
 ├── syntese.yaml.example
 │
 ├── packages/
-│   ├── core/                          # @composio/ao-core
+│   ├── core/                          # @syntese/core
 │   │   └── src/
 │   │       ├── types.ts               # All interfaces + types
 │   │       ├── config.ts              # YAML config loader + Zod validation
@@ -680,7 +680,7 @@ syntese/
 │   │       ├── metadata.ts            # Flat-file read/write
 │   │       └── index.ts
 │   │
-│   ├── cli/                           # @composio/ao-cli → `ao` binary
+│   ├── cli/                           # @syntese/cli → `ao` binary
 │   │   └── src/
 │   │       ├── index.ts               # Commander.js setup
 │   │       └── commands/
@@ -694,7 +694,7 @@ syntese/
 │   │           ├── dashboard.ts       # ao dashboard (starts web)
 │   │           └── open.ts            # ao open [session|all]
 │   │
-│   ├── web/                           # @composio/ao-web
+│   ├── web/                           # @syntese/web
 │   │   ├── next.config.ts
 │   │   └── src/
 │   │       ├── app/

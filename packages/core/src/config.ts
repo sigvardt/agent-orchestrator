@@ -1,5 +1,6 @@
 /**
- * Configuration loader — reads agent-orchestrator.yaml and validates with Zod.
+ * Configuration loader — reads syntese.yaml (or legacy agent-orchestrator.yaml)
+ * and validates with Zod.
  *
  * Minimal config that just works:
  *   projects:
@@ -17,6 +18,25 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { OrchestratorConfig } from "./types.js";
 import { generateSessionPrefix } from "./paths.js";
+
+const CONFIG_FILENAMES = [
+  "syntese.yaml",
+  "syntese.yml",
+  "agent-orchestrator.yaml",
+  "agent-orchestrator.yml",
+];
+
+const HOME_CONFIG_PATHS = [
+  resolve(homedir(), ".syntese.yaml"),
+  resolve(homedir(), ".syntese.yml"),
+  resolve(homedir(), ".config", "syntese", "config.yaml"),
+  resolve(homedir(), ".agent-orchestrator.yaml"),
+  resolve(homedir(), ".agent-orchestrator.yml"),
+  resolve(homedir(), ".config", "agent-orchestrator", "config.yaml"),
+];
+
+const MISSING_CONFIG_ERROR =
+  "No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run `ao init` to create one.";
 
 function inferScmPlugin(project: {
   repo: string;
@@ -412,8 +432,10 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
  */
 export function findConfigFile(startDir?: string): string | null {
   // 1. Check environment variable override
-  if (process.env["AO_CONFIG_PATH"]) {
-    const envPath = resolve(process.env["AO_CONFIG_PATH"]);
+  const envConfigCandidates = [process.env["SYNTESE_CONFIG_PATH"], process.env["AO_CONFIG_PATH"]];
+  for (const envConfigPath of envConfigCandidates) {
+    if (!envConfigPath) continue;
+    const envPath = resolve(envConfigPath);
     if (existsSync(envPath)) {
       return envPath;
     }
@@ -421,9 +443,7 @@ export function findConfigFile(startDir?: string): string | null {
 
   // 2. Search up directory tree from CWD (like git)
   const searchUpTree = (dir: string): string | null => {
-    const configFiles = ["agent-orchestrator.yaml", "agent-orchestrator.yml"];
-
-    for (const filename of configFiles) {
+    for (const filename of CONFIG_FILENAMES) {
       const configPath = resolve(dir, filename);
       if (existsSync(configPath)) {
         return configPath;
@@ -447,8 +467,7 @@ export function findConfigFile(startDir?: string): string | null {
 
   // 3. Check explicit startDir if provided
   if (startDir) {
-    const files = ["agent-orchestrator.yaml", "agent-orchestrator.yml"];
-    for (const filename of files) {
+    for (const filename of CONFIG_FILENAMES) {
       const path = resolve(startDir, filename);
       if (existsSync(path)) {
         return path;
@@ -457,13 +476,7 @@ export function findConfigFile(startDir?: string): string | null {
   }
 
   // 4. Check home directory locations
-  const homePaths = [
-    resolve(homedir(), ".agent-orchestrator.yaml"),
-    resolve(homedir(), ".agent-orchestrator.yml"),
-    resolve(homedir(), ".config", "agent-orchestrator", "config.yaml"),
-  ];
-
-  for (const path of homePaths) {
+  for (const path of HOME_CONFIG_PATHS) {
     if (existsSync(path)) {
       return path;
     }
@@ -488,7 +501,7 @@ export function loadConfig(configPath?: string): OrchestratorConfig {
   const path = configPath ?? findConfigFile();
 
   if (!path) {
-    throw new Error("No agent-orchestrator.yaml found. Run `ao init` to create one.");
+    throw new Error(MISSING_CONFIG_ERROR);
   }
 
   const raw = readFileSync(path, "utf-8");
@@ -509,7 +522,7 @@ export function loadConfigWithPath(configPath?: string): {
   const path = configPath ?? findConfigFile();
 
   if (!path) {
-    throw new Error("No agent-orchestrator.yaml found. Run `ao init` to create one.");
+    throw new Error(MISSING_CONFIG_ERROR);
   }
 
   const raw = readFileSync(path, "utf-8");

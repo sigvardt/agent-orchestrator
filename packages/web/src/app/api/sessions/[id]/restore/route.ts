@@ -6,7 +6,7 @@ import {
   SessionNotRestorableError,
   WorkspaceMissingError,
   SessionNotFoundError,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 /** POST /api/sessions/:id/restore — Restore a terminated session */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

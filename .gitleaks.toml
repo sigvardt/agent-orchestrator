@@ -1,7 +1,7 @@
-# Gitleaks configuration for Agent Orchestrator
+# Gitleaks configuration for Syntese
 # Prevents accidental commits of secrets, API keys, tokens, etc.
 
-title = "Agent Orchestrator Secret Scanning"
+title = "Syntese Secret Scanning"
 
 # Use all default gitleaks rules
 [extend]

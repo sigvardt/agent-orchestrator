@@ -12,7 +12,7 @@ import type {
   ProjectConfig,
   OrchestratorConfig,
   PluginRegistry,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import {
   sessionToDashboard,
   resolveProject,

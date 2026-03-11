@@ -74,10 +74,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build non-web packages
-        run: pnpm -r --filter '!@composio/ao-web' build
+        run: pnpm -r --filter '!@syntese/web' build
 
       - name: Build web
-        run: pnpm --filter @composio/ao-web build
+        run: pnpm --filter @syntese/web build
 
       - name: Typecheck
         run: pnpm run typecheck

@@ -9,7 +9,7 @@ import {
   type UsageDialKind,
   type UsageProvider,
   type UsageSnapshot,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {

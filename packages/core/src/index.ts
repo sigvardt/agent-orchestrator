@@ -1,7 +1,7 @@
 /**
- * @composio/ao-core
+ * @syntese/core
  *
- * Core library for the Agent Orchestrator.
+ * Core library for Syntese.
  * Exports all types, config loader, and service implementations.
  */
 
@@ -141,6 +141,7 @@ export {
   generateProjectId,
   generateInstanceId,
   generateSessionPrefix,
+  getDataRootDir,
   getProjectBaseDir,
   getSessionsDir,
   getWorktreesDir,

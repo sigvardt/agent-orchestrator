@@ -37,12 +37,30 @@ describe("Config Loading", () => {
 
   describe("findConfigFile", () => {
     it("should find config in current directory", () => {
-      const configPath = join(testDir, "agent-orchestrator.yaml");
+      const configPath = join(testDir, "syntese.yaml");
       writeFileSync(configPath, "projects: {}");
 
       const found = findConfigFile();
       // Use realpathSync to handle macOS /var -> /private/var symlink
       expect(realpathSync(found!)).toBe(realpathSync(configPath));
+    });
+
+    it("prefers syntese.yaml over agent-orchestrator.yaml", () => {
+      const legacyConfigPath = join(testDir, "agent-orchestrator.yaml");
+      const configPath = join(testDir, "syntese.yaml");
+      writeFileSync(legacyConfigPath, "port: 3001\nprojects: {}");
+      writeFileSync(configPath, "port: 3002\nprojects: {}");
+
+      const found = findConfigFile();
+      expect(realpathSync(found!)).toBe(realpathSync(configPath));
+    });
+
+    it("falls back to agent-orchestrator.yaml when syntese.yaml is absent", () => {
+      const legacyConfigPath = join(testDir, "agent-orchestrator.yaml");
+      writeFileSync(legacyConfigPath, "projects: {}");
+
+      const found = findConfigFile();
+      expect(realpathSync(found!)).toBe(realpathSync(legacyConfigPath));
     });
 
     it("should prioritize AO_CONFIG_PATH env var", () => {
@@ -53,7 +71,7 @@ describe("Config Loading", () => {
       writeFileSync(customConfig, "projects: {}");
 
       // Create config in current directory too
-      const localConfig = join(testDir, "agent-orchestrator.yaml");
+      const localConfig = join(testDir, "syntese.yaml");
       writeFileSync(localConfig, "projects: {}");
 
       // Set env var to point to custom location
@@ -220,7 +238,7 @@ projects:
     });
 
     it("should throw error if config not found", () => {
-      expect(() => loadConfig()).toThrow("No agent-orchestrator.yaml found");
+      expect(() => loadConfig()).toThrow("No syntese.yaml found");
     });
   });
 
@@ -240,7 +258,7 @@ projects:
 
     it("should use env var over default search", () => {
       const envConfig = join(testDir, "env-config.yaml");
-      const localConfig = join(testDir, "agent-orchestrator.yaml");
+      const localConfig = join(testDir, "syntese.yaml");
 
       writeFileSync(envConfig, "port: 3001\nprojects: {}");
       writeFileSync(localConfig, "port: 3002\nprojects: {}");
@@ -249,6 +267,20 @@ projects:
 
       const config = loadConfig();
       expect(config.port).toBe(3001); // Should use env, not local
+    });
+
+    it("should use SYNTESE_CONFIG_PATH over AO_CONFIG_PATH", () => {
+      const aoConfig = join(testDir, "ao-config.yaml");
+      const synteseConfig = join(testDir, "syntese-config.yaml");
+
+      writeFileSync(aoConfig, "port: 3001\nprojects: {}");
+      writeFileSync(synteseConfig, "port: 3002\nprojects: {}");
+
+      process.env["AO_CONFIG_PATH"] = aoConfig;
+      process.env["SYNTESE_CONFIG_PATH"] = synteseConfig;
+
+      const config = loadConfig();
+      expect(config.port).toBe(3002);
     });
   });
 

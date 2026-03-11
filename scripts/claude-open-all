@@ -12,7 +12,7 @@ for arg in "$@"; do
         --new-window|-w)
             NEW_WINDOW=true
             ;;
-        integrator|i|splitly|s|safesplit|agent-orchestrator|ao|all)
+        integrator|i|splitly|s|safesplit|syntese|ao|all)
             PROJECT="$arg"
             ;;
         *)
@@ -94,7 +94,7 @@ case "$PROJECT" in
         SESSIONS=($(get_sessions "splitly"))
         echo "Opening ${#SESSIONS[@]} splitly sessions..."
         ;;
-    agent-orchestrator|ao)
+    syntese|ao)
         SESSIONS=($(get_sessions "ao"))
         echo "Opening ${#SESSIONS[@]} ao sessions..."
         ;;

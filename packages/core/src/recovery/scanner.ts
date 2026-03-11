@@ -1,9 +1,8 @@
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SessionId, OrchestratorConfig, ProjectConfig } from "../types.js";
 import { listMetadata, readMetadataRaw } from "../metadata.js";
-import { getSessionsDir, generateConfigHash } from "../paths.js";
+import { getDataRootDir, getSessionsDir, generateConfigHash } from "../paths.js";
 
 export interface ScannedSession {
   sessionId: SessionId;
@@ -44,5 +43,5 @@ export function scanAllSessions(
 
 export function getRecoveryLogPath(configPath: string): string {
   const hash = generateConfigHash(configPath);
-  return join(homedir(), ".agent-orchestrator", hash, "recovery.log");
+  return join(getDataRootDir(), hash, "recovery.log");
 }

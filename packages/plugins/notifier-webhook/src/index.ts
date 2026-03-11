@@ -4,12 +4,12 @@ import {
   type OrchestratorEvent,
   type NotifyAction,
   type NotifyContext,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import {
   isRetryableHttpStatus,
   normalizeRetryConfig,
   validateUrl,
-} from "@composio/ao-core/utils";
+} from "@syntese/core/utils";
 
 export const manifest = {
   name: "webhook",

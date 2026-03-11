@@ -124,7 +124,7 @@ beforeEach(() => {
   mkdirSync(tmpDir, { recursive: true });
 
   // Create a temporary config file
-  configPath = join(tmpDir, "agent-orchestrator.yaml");
+  configPath = join(tmpDir, "syntese.yaml");
   writeFileSync(configPath, "projects: {}\n");
 
   mockRuntime = {
@@ -220,7 +220,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env.PATH = originalPath;
-  // Clean up hash-based directories in ~/.agent-orchestrator
+  // Clean up hash-based directories in ~/.syntese
   const projectBaseDir = getProjectBaseDir(configPath, join(tmpDir, "my-app"));
   if (existsSync(projectBaseDir)) {
     rmSync(projectBaseDir, { recursive: true, force: true });
@@ -4266,7 +4266,7 @@ describe("PluginRegistry.loadBuiltins importFn", () => {
     const fakeImportFn = async (pkg: string): Promise<unknown> => {
       importedPackages.push(pkg);
       // Return a valid plugin module for runtime-tmux
-      if (pkg === "@composio/ao-plugin-runtime-tmux") {
+      if (pkg === "@syntese/plugin-runtime-tmux") {
         return {
           manifest: { name: "tmux", slot: "runtime", description: "test", version: "0.0.0" },
           create: () => ({ name: "tmux" }),
@@ -4280,7 +4280,7 @@ describe("PluginRegistry.loadBuiltins importFn", () => {
 
     // importFn should have been called for all builtin plugins
     expect(importedPackages.length).toBeGreaterThan(0);
-    expect(importedPackages).toContain("@composio/ao-plugin-runtime-tmux");
+    expect(importedPackages).toContain("@syntese/plugin-runtime-tmux");
 
     // The tmux plugin should be registered
     const tmux = registry.get("runtime", "tmux");
@@ -4301,7 +4301,7 @@ describe("PluginRegistry.loadBuiltins importFn", () => {
 
     // Should have attempted to import builtin plugins via the provided importFn
     expect(importedPackages.length).toBeGreaterThan(0);
-    expect(importedPackages).toContain("@composio/ao-plugin-runtime-tmux");
+    expect(importedPackages).toContain("@syntese/plugin-runtime-tmux");
   });
 });
 

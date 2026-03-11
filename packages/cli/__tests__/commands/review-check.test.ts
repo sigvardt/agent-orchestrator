@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { type Session, type SessionManager, getSessionsDir } from "@composio/ao-core";
+import { type Session, type SessionManager, getSessionsDir } from "@syntese/core";
 
 const { mockTmux, mockExec, mockGh, mockConfigRef, mockSessionManager, sessionsDirRef } =
   vi.hoisted(() => ({
@@ -55,9 +55,9 @@ vi.mock("ora", () => ({
   }),
 }));
 
-vi.mock("@composio/ao-core", async (importOriginal) => {
+vi.mock("@syntese/core", async (importOriginal) => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-  const actual = await importOriginal<typeof import("@composio/ao-core")>();
+  const actual = await importOriginal<typeof import("@syntese/core")>();
   return {
     ...actual,
     loadConfig: () => mockConfigRef.current,
@@ -117,7 +117,7 @@ let consoleSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "ao-review-test-"));
 
-  const configPath = join(tmpDir, "agent-orchestrator.yaml");
+  const configPath = join(tmpDir, "syntese.yaml");
   writeFileSync(configPath, "projects: {}");
 
   mockConfigRef.current = {

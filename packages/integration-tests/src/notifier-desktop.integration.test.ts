@@ -5,14 +5,15 @@
  * Everything else runs for real: config parsing, escaping chains, formatting.
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import type { NotifyAction } from "@composio/ao-core";
+import type { NotifyAction } from "@syntese/core";
 import { makeEvent } from "./helpers/event-factory.js";
 
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
 }));
 
-vi.mock("node:os", () => ({
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal()),
   platform: vi.fn(() => "darwin"),
 }));
 
@@ -23,7 +24,7 @@ const mockExecFile = execFile as unknown as Mock;
 const mockPlatform = platform as unknown as Mock;
 
 // Import the full plugin module — config parsing, escaping, formatting all run for real
-import desktopPlugin from "@composio/ao-plugin-notifier-desktop";
+import desktopPlugin from "@syntese/plugin-notifier-desktop";
 
 describe("notifier-desktop integration", () => {
   beforeEach(() => {
@@ -117,7 +118,7 @@ describe("notifier-desktop integration", () => {
 
       expect(mockExecFile.mock.calls[0][0]).toBe("notify-send");
       const args = mockExecFile.mock.calls[0][1] as string[];
-      expect(args).toContain("Agent Orchestrator [backend-1]");
+      expect(args).toContain("Syntese [backend-1]");
       expect(args).toContain("Test msg");
     });
 

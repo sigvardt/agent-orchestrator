@@ -1,4 +1,4 @@
-import { ACTIVITY_STATE } from "@composio/ao-core";
+import { ACTIVITY_STATE } from "@syntese/core";
 import { NextResponse } from "next/server";
 import { getServices, getSCM } from "@/lib/services";
 import {

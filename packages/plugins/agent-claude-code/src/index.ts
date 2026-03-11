@@ -15,7 +15,7 @@ import {
   type UsageDial,
   type UsageSnapshot,
   type WorkspaceHooksConfig,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { execFile } from "node:child_process";
 import { readdir, readFile, stat, open, writeFile, mkdir, chmod, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -47,7 +47,7 @@ function normalizePermissionMode(
 
 /** Hook script content that updates session metadata on git/gh commands */
 const METADATA_UPDATER_SCRIPT = `#!/usr/bin/env bash
-# Metadata Updater Hook for Agent Orchestrator
+# Metadata Updater Hook for Syntese
 #
 # This PostToolUse hook automatically updates session metadata when:
 # - gh pr create: extracts PR URL and writes to metadata
@@ -333,7 +333,7 @@ interface ClaudeRateLimitInfo {
  * Read only the last chunk of a JSONL file to extract the last entry's type
  * and the file's modification time. This is optimized for polling — it avoids
  * reading the entire file (which `getSessionInfo()` does for full cost/summary).
- * Now uses the shared readLastJsonlEntry utility from @composio/ao-core.
+ * Now uses the shared readLastJsonlEntry utility from @syntese/core.
  */
 
 /**

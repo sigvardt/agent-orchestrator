@@ -1,13 +1,13 @@
 #!/bin/bash
-# claude-ao-session - Worktree-based session manager for agent-orchestrator
+# claude-ao-session - Worktree-based session manager for syntese
 
 set -e
 
-MAIN_REPO=~/agent-orchestrator
+MAIN_REPO=~/syntese
 WORKTREE_DIR=~/.worktrees/ao
 SESSION_DIR=~/.ao-sessions
 DEFAULT_BRANCH="main"
-GITHUB_REPO="ComposioHQ/agent-orchestrator"
+GITHUB_REPO="sigvardt/syntese"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

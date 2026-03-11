@@ -9,7 +9,7 @@ import {
   type PluginModule,
   type RuntimeHandle,
   type Session,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { stat, access } from "node:fs/promises";

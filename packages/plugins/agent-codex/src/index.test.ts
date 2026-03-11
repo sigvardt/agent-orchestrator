@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type {
-  Session,
-  RuntimeHandle,
-  AgentLaunchConfig,
-  AgentSpecificConfig,
-} from "@composio/ao-core";
+import type { Session, RuntimeHandle, AgentLaunchConfig, AgentSpecificConfig } from "@syntese/core";
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks — available inside vi.mock factories
@@ -1779,7 +1774,7 @@ describe("setupWorkspaceHooks", () => {
       (call: string[]) => typeof call[0] === "string" && call[0].endsWith("AGENTS.md"),
     );
     expect(agentsMdCall).toBeDefined();
-    expect(agentsMdCall![1]).toContain("Agent Orchestrator (ao) Session");
+    expect(agentsMdCall![1]).toContain("Syntese (ao) Session");
     expect(agentsMdCall![1]).toContain("# Existing Content");
   });
 
@@ -1801,7 +1796,7 @@ describe("setupWorkspaceHooks", () => {
       (call: string[]) => typeof call[0] === "string" && call[0].endsWith("AGENTS.md"),
     );
     expect(agentsMdCall).toBeDefined();
-    expect(agentsMdCall![1]).toContain("Agent Orchestrator (ao) Session");
+    expect(agentsMdCall![1]).toContain("Syntese (ao) Session");
   });
 
   it("uses atomic write (temp + rename) to prevent partial reads from concurrent sessions", async () => {
@@ -1836,9 +1831,7 @@ describe("setupWorkspaceHooks", () => {
         return Promise.resolve("0.1.1");
       }
       if (typeof path === "string" && path.endsWith("AGENTS.md")) {
-        return Promise.resolve(
-          "# Existing\n\n## Agent Orchestrator (ao) Session\n\nAlready here.\n",
-        );
+        return Promise.resolve("# Existing\n\n## Syntese (ao) Session\n\nAlready here.\n");
       }
       return Promise.reject(new Error("ENOENT"));
     });
@@ -1914,8 +1907,9 @@ describe("shell wrapper content", () => {
 
     it("validates ao_dir is an absolute path under expected locations", async () => {
       const content = await getWrapperContent("ao-metadata-helper.sh");
-      // Only allows paths under $HOME/.ao/, $HOME/.agent-orchestrator/, or /tmp/
+      // Only allows paths under $HOME/.ao/, $HOME/.syntese/, $HOME/.agent-orchestrator/, or /tmp/
       expect(content).toContain('$HOME"/.ao/*');
+      expect(content).toContain('$HOME"/.syntese/*');
       expect(content).toContain('$HOME"/.agent-orchestrator/*');
       expect(content).toContain("/tmp/*");
     });

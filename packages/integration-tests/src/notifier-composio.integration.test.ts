@@ -5,8 +5,8 @@
  * Everything else runs for real: config parsing, tool slug routing, message formatting.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { NotifyAction } from "@composio/ao-core";
-import composioPlugin from "@composio/ao-plugin-notifier-composio";
+import type { NotifyAction } from "@syntese/core";
+import composioPlugin from "@syntese/plugin-notifier-composio";
 import { makeEvent } from "./helpers/event-factory.js";
 
 const mockExecuteAction = vi.fn().mockResolvedValue({ successful: true });
@@ -81,7 +81,7 @@ describe("notifier-composio integration", () => {
           action: "GMAIL_SEND_EMAIL",
           params: expect.objectContaining({
             to: "admin@example.com",
-            subject: "Agent Orchestrator Notification",
+            subject: "Syntese Notification",
           }),
         }),
       );

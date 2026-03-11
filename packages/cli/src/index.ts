@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { basename } from "node:path";
 import { Command } from "commander";
 import { registerInit } from "./commands/init.js";
 import { registerStatus } from "./commands/status.js";
@@ -15,10 +16,12 @@ import { registerServices } from "./commands/services.js";
 import { registerVerify } from "./commands/verify.js";
 
 const program = new Command();
+const invokedName = basename(process.argv[1] ?? "");
+const commandName = invokedName === "syntese" ? "syntese" : "ao";
 
 program
-  .name("ao")
-  .description("Agent Orchestrator — manage parallel AI coding agents")
+  .name(commandName)
+  .description("Syntese — manage parallel AI coding agents (`ao` is still supported)")
   .version("0.1.0");
 
 registerInit(program);

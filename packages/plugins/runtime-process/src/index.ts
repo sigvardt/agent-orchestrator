@@ -6,7 +6,7 @@ import type {
   RuntimeHandle,
   RuntimeMetrics,
   AttachInfo,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 export const manifest = {
   name: "process",

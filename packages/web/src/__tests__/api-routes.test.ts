@@ -8,7 +8,7 @@ import {
   type OrchestratorConfig,
   type PluginRegistry,
   type SCM,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import * as serialize from "@/lib/serialize";
 import { getSCM } from "@/lib/services";
 
@@ -167,7 +167,7 @@ const mockLifecycleManager = {
 };
 
 const mockConfig: OrchestratorConfig = {
-  configPath: "/tmp/ao-test/agent-orchestrator.yaml",
+  configPath: "/tmp/ao-test/syntese.yaml",
   port: 3000,
   readyThresholdMs: 300_000,
   defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },

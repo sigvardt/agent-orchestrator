@@ -3,7 +3,7 @@ import {
   GLOBAL_PAUSE_SOURCE_KEY,
   GLOBAL_PAUSE_UNTIL_KEY,
   parsePauseUntil,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 export interface GlobalPauseState {
   pausedUntil: string;

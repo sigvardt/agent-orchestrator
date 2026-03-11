@@ -9,7 +9,8 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
 }));
 
-vi.mock("node:os", () => ({
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal()),
   platform: vi.fn(() => "darwin"),
 }));
 
@@ -19,7 +20,7 @@ import { platform } from "node:os";
 const mockExecFile = execFile as unknown as Mock;
 const mockPlatform = platform as unknown as Mock;
 
-import iterm2Plugin from "@composio/ao-plugin-terminal-iterm2";
+import iterm2Plugin from "@syntese/plugin-terminal-iterm2";
 import { makeSession } from "./helpers/event-factory.js";
 
 function simulateOsascript(stdout: string) {

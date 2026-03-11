@@ -14,7 +14,7 @@ import {
   type UsageDial,
   type UsageSnapshot,
   type WorkspaceHooksConfig,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import {
@@ -117,7 +117,7 @@ update_ao_metadata() {
 
   # Validate: ao_dir must be an absolute path under known ao directories or /tmp
   case "\$ao_dir" in
-    "\$HOME"/.ao/* | "\$HOME"/.agent-orchestrator/* | /tmp/*) ;;
+    "\$HOME"/.ao/* | "\$HOME"/.syntese/* | "\$HOME"/.agent-orchestrator/* | /tmp/*) ;;
     *) return 0 ;;
   esac
 
@@ -268,9 +268,9 @@ exit \$exit_code
  * and helps if the wrappers are bypassed.
  */
 const AO_AGENTS_MD_SECTION = `
-## Agent Orchestrator (ao) Session
+## Syntese (ao) Session
 
-You are running inside an Agent Orchestrator managed workspace.
+You are running inside an Syntese managed workspace.
 Session metadata is updated automatically via shell wrappers.
 
 If automatic updates fail, you can manually update metadata:
@@ -328,7 +328,7 @@ async function setupCodexWorkspace(workspacePath: string): Promise<void> {
     // File doesn't exist yet
   }
 
-  if (!existing.includes("Agent Orchestrator (ao) Session")) {
+  if (!existing.includes("Syntese (ao) Session")) {
     const content = existing
       ? existing.trimEnd() + "\n" + AO_AGENTS_MD_SECTION
       : AO_AGENTS_MD_SECTION.trimStart();

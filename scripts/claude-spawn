@@ -75,7 +75,7 @@ case "$PROJECT" in
         SESSION_SCRIPT="$HOME/claude-splitly-session-v2"
         PROJECT_NAME="splitly"
         ;;
-    agent-orchestrator|ao)
+    syntese|ao)
         SESSION_SCRIPT="$HOME/claude-ao-session"
         PROJECT_NAME="ao"
         ;;
@@ -93,7 +93,7 @@ case "$PROJECT" in
         ;;
     *)
         echo "Unknown project: $PROJECT"
-        echo "Use 'integrator' (or 'i'), 'splitly' (or 's'), or 'agent-orchestrator' (or 'ao')"
+        echo "Use 'integrator' (or 'i'), 'splitly' (or 's'), or 'syntese' (or 'ao')"
         exit 1
         ;;
 esac

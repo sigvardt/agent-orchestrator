@@ -19,7 +19,7 @@ import {
   SessionNotFoundError,
   getSessionsDir,
   getProjectBaseDir,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 const {
   mockTmux,
@@ -87,9 +87,9 @@ vi.mock("../../src/lib/shell.js", () => ({
   },
 }));
 
-vi.mock("@composio/ao-core", async (importOriginal) => {
+vi.mock("@syntese/core", async (importOriginal) => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-  const actual = await importOriginal<typeof import("@composio/ao-core")>();
+  const actual = await importOriginal<typeof import("@syntese/core")>();
   return {
     ...actual,
     loadConfig: () => mockConfigRef.current,
@@ -150,7 +150,7 @@ let consoleSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "ao-session-test-"));
 
-  configPath = join(tmpDir, "agent-orchestrator.yaml");
+  configPath = join(tmpDir, "syntese.yaml");
   writeFileSync(configPath, "projects: {}");
 
   mockConfigRef.current = {
@@ -245,7 +245,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Clean up hash-based directories in ~/.agent-orchestrator
+  // Clean up hash-based directories in ~/.syntese
   const projectBaseDir = getProjectBaseDir(configPath, join(tmpDir, "main-repo"));
   if (existsSync(projectBaseDir)) {
     rmSync(projectBaseDir, { recursive: true, force: true });

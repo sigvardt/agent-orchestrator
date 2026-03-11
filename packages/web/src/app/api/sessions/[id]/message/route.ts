@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getServices } from "@/lib/services";
 import { stripControlChars, validateIdentifier, validateString } from "@/lib/validation";
-import { SessionNotFoundError } from "@composio/ao-core";
+import { SessionNotFoundError } from "@syntese/core";
 
 const MAX_MESSAGE_LENGTH = 10_000;
 

@@ -6,13 +6,13 @@ services:
       context: ../..
       dockerfile: tests/integration/Dockerfile
     container_name: ao-onboarding-test
-    command: /workspace/agent-orchestrator/tests/integration/onboarding-test.sh
+    command: /workspace/syntese/tests/integration/onboarding-test.sh
     environment:
       - NODE_ENV=test
       - CI=true
     # Mount the repo for live development (optional)
     volumes:
-      - ../..:/workspace/agent-orchestrator
+      - ../..:/workspace/syntese
     # Expose ports for debugging (optional)
     # Use 9000/9001/9003 on host to avoid conflicts with orchestrator
     # Container still uses 9000/14800/14801 internally

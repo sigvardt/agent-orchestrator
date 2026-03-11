@@ -31,17 +31,17 @@ import {
   type DecomposerConfig,
   DEFAULT_DECOMPOSER_CONFIG,
   TERMINAL_STATUSES,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 // Static plugin imports — webpack needs these to be string literals
-import pluginRuntimeTmux from "@composio/ao-plugin-runtime-tmux";
-import pluginAgentClaudeCode from "@composio/ao-plugin-agent-claude-code";
-import pluginAgentCodex from "@composio/ao-plugin-agent-codex";
-import pluginAgentOpencode from "@composio/ao-plugin-agent-opencode";
-import pluginWorkspaceWorktree from "@composio/ao-plugin-workspace-worktree";
-import pluginScmGithub from "@composio/ao-plugin-scm-github";
-import pluginTrackerGithub from "@composio/ao-plugin-tracker-github";
-import pluginTrackerLinear from "@composio/ao-plugin-tracker-linear";
+import pluginRuntimeTmux from "@syntese/plugin-runtime-tmux";
+import pluginAgentClaudeCode from "@syntese/plugin-agent-claude-code";
+import pluginAgentCodex from "@syntese/plugin-agent-codex";
+import pluginAgentOpencode from "@syntese/plugin-agent-opencode";
+import pluginWorkspaceWorktree from "@syntese/plugin-workspace-worktree";
+import pluginScmGithub from "@syntese/plugin-scm-github";
+import pluginTrackerGithub from "@syntese/plugin-tracker-github";
+import pluginTrackerLinear from "@syntese/plugin-tracker-linear";
 
 export interface Services {
   config: OrchestratorConfig;

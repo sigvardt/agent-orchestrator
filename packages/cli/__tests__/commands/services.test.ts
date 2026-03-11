@@ -16,9 +16,9 @@ const {
   mockRunSupervisorLoop: vi.fn(),
 }));
 
-vi.mock("@composio/ao-core", async (importOriginal) => {
+vi.mock("@syntese/core", async (importOriginal) => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-  const actual = await importOriginal<typeof import("@composio/ao-core")>();
+  const actual = await importOriginal<typeof import("@syntese/core")>();
   return {
     ...actual,
     loadConfig: () => mockConfigRef.current,
@@ -40,7 +40,7 @@ let program: Command;
 
 beforeEach(() => {
   mockConfigRef.current = {
-    configPath: "/tmp/agent-orchestrator.yaml",
+    configPath: "/tmp/syntese.yaml",
     port: 3000,
     readyThresholdMs: 300_000,
     defaults: {

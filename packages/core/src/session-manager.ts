@@ -611,7 +611,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
 
   /**
    * List all session files across all projects (or filtered by projectId).
-   * Scans project-specific directories under ~/.agent-orchestrator/{hash}-{projectId}/sessions/
+   * Scans project-specific directories under the resolved syntese data root
+   * (preferring ~/.syntese and falling back to ~/.agent-orchestrator when needed).
    *
    * Note: projectId is the config key (e.g., "test-project"), not the path basename.
    */
@@ -2202,10 +2203,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       const normalized = current.runtimeHandle ? current : { ...current, runtimeHandle: handle };
 
       if (forceRestore) {
-        return restoreForDelivery(
-          "session needed to be restarted before delivery",
-          normalized,
-        );
+        return restoreForDelivery("session needed to be restarted before delivery", normalized);
       }
 
       const [runtimeAlive, processRunning] = await Promise.all([

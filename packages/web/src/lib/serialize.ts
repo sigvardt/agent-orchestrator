@@ -16,7 +16,7 @@ import {
   type ProjectConfig,
   type OrchestratorConfig,
   type PluginRegistry,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import type { DashboardSession, DashboardPR, DashboardStats } from "./types.js";
 import { TTLCache, prCache, prCacheKey, type PREnrichmentData } from "./cache";
 

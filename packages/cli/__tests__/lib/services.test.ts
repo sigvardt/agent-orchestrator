@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { OrchestratorConfig } from "@composio/ao-core";
+import type { OrchestratorConfig } from "@syntese/core";
 import { probeManagedServices, resolveServicePorts } from "../../src/lib/services.js";
 
 interface TestServer {
@@ -11,7 +11,7 @@ interface TestServer {
 
 function makeConfig(overrides: Partial<OrchestratorConfig> = {}): OrchestratorConfig {
   return {
-    configPath: "/tmp/agent-orchestrator.yaml",
+    configPath: "/tmp/syntese.yaml",
     port: 3000,
     readyThresholdMs: 300_000,
     defaults: {

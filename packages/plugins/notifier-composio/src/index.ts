@@ -5,7 +5,7 @@ import type {
   NotifyAction,
   NotifyContext,
   EventPriority,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 export const manifest = {
   name: "composio",
@@ -31,7 +31,7 @@ const APP_TOOL_SLUG: Record<ComposioApp, string> = {
 
 const VALID_APPS = new Set<string>(["slack", "discord", "gmail"]);
 
-const GMAIL_SUBJECT = "Agent Orchestrator Notification";
+const GMAIL_SUBJECT = "Syntese Notification";
 
 interface ComposioToolkit {
   executeAction(params: {

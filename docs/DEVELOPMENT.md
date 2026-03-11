@@ -135,7 +135,7 @@ syntese/
 **Plugin Pattern:**
 
 ```typescript
-import type { PluginModule, Runtime } from "@composio/ao-core";
+import type { PluginModule, Runtime } from "@syntese/core";
 
 export const manifest = {
   name: "my-plugin",
@@ -166,10 +166,10 @@ See [CLAUDE.md](../CLAUDE.md) for full conventions.
 pnpm test
 
 # Run tests for specific package
-pnpm --filter @composio/ao-core test
+pnpm --filter @syntese/core test
 
 # Run tests in watch mode
-pnpm --filter @composio/ao-core test -- --watch
+pnpm --filter @syntese/core test -- --watch
 
 # Run integration tests
 pnpm test:integration
@@ -266,7 +266,7 @@ gitleaks detect
 
    ```json
    {
-     "name": "@composio/ao-runtime-myplugin",
+     "name": "@syntese/runtime-myplugin",
      "version": "0.1.0",
      "type": "module",
      "main": "dist/index.js",
@@ -277,7 +277,7 @@ gitleaks detect
        "test": "vitest"
      },
      "dependencies": {
-       "@composio/ao-core": "workspace:*"
+       "@syntese/core": "workspace:*"
      }
    }
    ```
@@ -290,8 +290,8 @@ gitleaks detect
 
 6. **Build and test**
    ```bash
-   pnpm --filter @composio/ao-runtime-myplugin build
-   pnpm --filter @composio/ao-runtime-myplugin test
+   pnpm --filter @syntese/runtime-myplugin build
+   pnpm --filter @syntese/runtime-myplugin test
    ```
 
 ### Updating Interfaces

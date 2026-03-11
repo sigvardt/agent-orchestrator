@@ -39,7 +39,7 @@ const {
   };
 });
 
-vi.mock("@composio/ao-core", () => ({
+vi.mock("@syntese/core", () => ({
   loadConfig: mockLoadConfig,
   createPluginRegistry: () => mockRegistry,
   createSessionManager: mockCreateSessionManager,
@@ -57,13 +57,13 @@ vi.mock("@composio/ao-core", () => ({
   TERMINAL_STATUSES: new Set(["merged", "killed"]) as ReadonlySet<string>,
 }));
 
-vi.mock("@composio/ao-plugin-runtime-tmux", () => ({ default: tmuxPlugin }));
-vi.mock("@composio/ao-plugin-agent-claude-code", () => ({ default: claudePlugin }));
-vi.mock("@composio/ao-plugin-agent-opencode", () => ({ default: opencodePlugin }));
-vi.mock("@composio/ao-plugin-workspace-worktree", () => ({ default: worktreePlugin }));
-vi.mock("@composio/ao-plugin-scm-github", () => ({ default: scmPlugin }));
-vi.mock("@composio/ao-plugin-tracker-github", () => ({ default: trackerGithubPlugin }));
-vi.mock("@composio/ao-plugin-tracker-linear", () => ({ default: trackerLinearPlugin }));
+vi.mock("@syntese/plugin-runtime-tmux", () => ({ default: tmuxPlugin }));
+vi.mock("@syntese/plugin-agent-claude-code", () => ({ default: claudePlugin }));
+vi.mock("@syntese/plugin-agent-opencode", () => ({ default: opencodePlugin }));
+vi.mock("@syntese/plugin-workspace-worktree", () => ({ default: worktreePlugin }));
+vi.mock("@syntese/plugin-scm-github", () => ({ default: scmPlugin }));
+vi.mock("@syntese/plugin-tracker-github", () => ({ default: trackerGithubPlugin }));
+vi.mock("@syntese/plugin-tracker-linear", () => ({ default: trackerLinearPlugin }));
 
 describe("services", () => {
   beforeEach(() => {
@@ -72,7 +72,7 @@ describe("services", () => {
     mockCreateSessionManager.mockReset();
     mockLoadConfig.mockReset();
     mockLoadConfig.mockReturnValue({
-      configPath: "/tmp/agent-orchestrator.yaml",
+      configPath: "/tmp/syntese.yaml",
       port: 3000,
       readyThresholdMs: 300_000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
@@ -125,7 +125,7 @@ describe("pollBacklog", () => {
     mockSpawn.mockClear();
 
     mockLoadConfig.mockReturnValue({
-      configPath: "/tmp/agent-orchestrator.yaml",
+      configPath: "/tmp/syntese.yaml",
       port: 3000,
       readyThresholdMs: 300_000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },

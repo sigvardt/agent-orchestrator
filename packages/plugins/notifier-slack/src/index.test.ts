@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { OrchestratorEvent, NotifyAction, EventPriority } from "@composio/ao-core";
+import type { OrchestratorEvent, NotifyAction, EventPriority } from "@syntese/core";
 import { manifest, create } from "./index.js";
 
 function makeEvent(overrides: Partial<OrchestratorEvent> = {}): OrchestratorEvent {
@@ -95,7 +95,7 @@ describe("notifier-slack", () => {
       await notifier.notify(makeEvent());
 
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(body.username).toBe("Agent Orchestrator");
+      expect(body.username).toBe("Syntese");
     });
 
     it("uses custom username when configured", async () => {

@@ -1,6 +1,6 @@
 /**
  * Config generator for `ao start <url>` — auto-detects project settings
- * from a repo URL and generates a valid agent-orchestrator.yaml.
+ * from a repo URL and generates a valid syntese.yaml.
  *
  * SCM-agnostic: parses GitHub, GitLab, Bitbucket URLs and infers plugins.
  */
@@ -187,7 +187,7 @@ export interface GenerateConfigOptions {
 }
 
 /**
- * Generate a complete agent-orchestrator.yaml config object from a repo URL.
+ * Generate a complete syntese.yaml config object from a repo URL.
  * Returns the raw object ready for YAML serialization.
  */
 export function generateConfigFromUrl(options: GenerateConfigOptions): Record<string, unknown> {

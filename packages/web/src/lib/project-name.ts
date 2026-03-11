@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { loadConfig } from "@composio/ao-core";
+import { loadConfig } from "@syntese/core";
 
 /**
  * Load the primary project name from config.

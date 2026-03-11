@@ -271,7 +271,7 @@ echo "│ QUICK ACTIONS                                                         
 echo "└──────────────────────────────────────────────────────────────────────────────┘"
 echo "  ~/claude-spawn i [linear-url]  - New integrator session in new iTerm2 tab"
 echo "  ~/claude-spawn s [issue-num]   - New splitly session in new iTerm2 tab"
-echo "  ~/claude-spawn ao [linear-id]  - New agent-orchestrator session"
+echo "  ~/claude-spawn ao [linear-id]  - New syntese session"
 echo "  ~/claude-integrator-session cleanup"
 echo "  ~/claude-splitly-session cleanup"
 echo "  ~/claude-ao-session cleanup"

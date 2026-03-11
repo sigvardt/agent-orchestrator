@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { validateIdentifier } from "@/lib/validation";
 import { getServices } from "@/lib/services";
-import { SessionNotFoundError } from "@composio/ao-core";
+import { SessionNotFoundError } from "@syntese/core";
 
 /** POST /api/sessions/:id/kill — Kill a session */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

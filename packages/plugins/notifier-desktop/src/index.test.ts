@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import type { OrchestratorEvent, NotifyAction } from "@composio/ao-core";
+import type { OrchestratorEvent, NotifyAction } from "@syntese/core";
 
 // Mock node:child_process
 vi.mock("node:child_process", () => ({
@@ -7,7 +7,8 @@ vi.mock("node:child_process", () => ({
 }));
 
 // Mock node:os
-vi.mock("node:os", () => ({
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal()),
   platform: vi.fn(() => "darwin"),
 }));
 
@@ -117,12 +118,12 @@ describe("notifier-desktop", () => {
       expect(script).toContain("URGENT");
     });
 
-    it("uses 'Agent Orchestrator' prefix for non-urgent priority", async () => {
+    it("uses 'Syntese' prefix for non-urgent priority", async () => {
       const notifier = create();
       await notifier.notify(makeEvent({ priority: "action" }));
 
       const script = mockExecFile.mock.calls[0][1][1] as string;
-      expect(script).toContain("Agent Orchestrator");
+      expect(script).toContain("Syntese");
     });
 
     it("includes sound for urgent notifications", async () => {

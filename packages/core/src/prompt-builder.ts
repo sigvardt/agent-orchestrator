@@ -18,7 +18,7 @@ import type { ProjectConfig } from "./types.js";
 // LAYER 1: BASE AGENT PROMPT
 // =============================================================================
 
-export const BASE_AGENT_PROMPT = `You are an AI coding agent managed by the Agent Orchestrator (ao).
+export const BASE_AGENT_PROMPT = `You are an AI coding agent managed by Syntese (ao).
 
 ## Session Lifecycle
 - You are running inside a managed session. Focus on the assigned task.
@@ -170,7 +170,9 @@ export function buildPrompt(config: PromptBuildConfig): string {
     const hierarchy = config.lineage.map((desc, i) => `${"  ".repeat(i)}${i}. ${desc}`);
     // Add current task marker using issueId or last lineage entry
     const currentLabel = config.issueId ?? "this task";
-    hierarchy.push(`${"  ".repeat(config.lineage.length)}${config.lineage.length}. ${currentLabel}  <-- (this task)`);
+    hierarchy.push(
+      `${"  ".repeat(config.lineage.length)}${config.lineage.length}. ${currentLabel}  <-- (this task)`,
+    );
 
     sections.push(
       `## Task Hierarchy\nThis task is part of a larger decomposed plan. Your place in the hierarchy:\n\n\`\`\`\n${hierarchy.join("\n")}\n\`\`\`\n\nStay focused on YOUR specific task. Do not implement functionality that belongs to other tasks in the hierarchy.`,

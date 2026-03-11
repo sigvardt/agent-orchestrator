@@ -3,7 +3,7 @@
  *
  * Plugins can be:
  * 1. Built-in (packages/plugins/*)
- * 2. npm packages (@composio/ao-plugin-*)
+ * 2. npm packages (@syntese/plugin-*)
  * 3. Local file paths specified in config
  */
 
@@ -25,32 +25,32 @@ function makeKey(slot: PluginSlot, name: string): string {
 /** Built-in plugin package names, mapped to their npm package */
 const BUILTIN_PLUGINS: Array<{ slot: PluginSlot; name: string; pkg: string }> = [
   // Runtimes
-  { slot: "runtime", name: "tmux", pkg: "@composio/ao-plugin-runtime-tmux" },
-  { slot: "runtime", name: "process", pkg: "@composio/ao-plugin-runtime-process" },
+  { slot: "runtime", name: "tmux", pkg: "@syntese/plugin-runtime-tmux" },
+  { slot: "runtime", name: "process", pkg: "@syntese/plugin-runtime-process" },
   // Agents
-  { slot: "agent", name: "claude-code", pkg: "@composio/ao-plugin-agent-claude-code" },
-  { slot: "agent", name: "codex", pkg: "@composio/ao-plugin-agent-codex" },
-  { slot: "agent", name: "aider", pkg: "@composio/ao-plugin-agent-aider" },
-  { slot: "agent", name: "opencode", pkg: "@composio/ao-plugin-agent-opencode" },
+  { slot: "agent", name: "claude-code", pkg: "@syntese/plugin-agent-claude-code" },
+  { slot: "agent", name: "codex", pkg: "@syntese/plugin-agent-codex" },
+  { slot: "agent", name: "aider", pkg: "@syntese/plugin-agent-aider" },
+  { slot: "agent", name: "opencode", pkg: "@syntese/plugin-agent-opencode" },
   // Workspaces
-  { slot: "workspace", name: "worktree", pkg: "@composio/ao-plugin-workspace-worktree" },
-  { slot: "workspace", name: "clone", pkg: "@composio/ao-plugin-workspace-clone" },
+  { slot: "workspace", name: "worktree", pkg: "@syntese/plugin-workspace-worktree" },
+  { slot: "workspace", name: "clone", pkg: "@syntese/plugin-workspace-clone" },
   // Trackers
-  { slot: "tracker", name: "github", pkg: "@composio/ao-plugin-tracker-github" },
-  { slot: "tracker", name: "linear", pkg: "@composio/ao-plugin-tracker-linear" },
-  { slot: "tracker", name: "gitlab", pkg: "@composio/ao-plugin-tracker-gitlab" },
+  { slot: "tracker", name: "github", pkg: "@syntese/plugin-tracker-github" },
+  { slot: "tracker", name: "linear", pkg: "@syntese/plugin-tracker-linear" },
+  { slot: "tracker", name: "gitlab", pkg: "@syntese/plugin-tracker-gitlab" },
   // SCM
-  { slot: "scm", name: "github", pkg: "@composio/ao-plugin-scm-github" },
-  { slot: "scm", name: "gitlab", pkg: "@composio/ao-plugin-scm-gitlab" },
+  { slot: "scm", name: "github", pkg: "@syntese/plugin-scm-github" },
+  { slot: "scm", name: "gitlab", pkg: "@syntese/plugin-scm-gitlab" },
   // Notifiers
-  { slot: "notifier", name: "composio", pkg: "@composio/ao-plugin-notifier-composio" },
-  { slot: "notifier", name: "desktop", pkg: "@composio/ao-plugin-notifier-desktop" },
-  { slot: "notifier", name: "openclaw", pkg: "@composio/ao-plugin-notifier-openclaw" },
-  { slot: "notifier", name: "slack", pkg: "@composio/ao-plugin-notifier-slack" },
-  { slot: "notifier", name: "webhook", pkg: "@composio/ao-plugin-notifier-webhook" },
+  { slot: "notifier", name: "composio", pkg: "@syntese/plugin-notifier-composio" },
+  { slot: "notifier", name: "desktop", pkg: "@syntese/plugin-notifier-desktop" },
+  { slot: "notifier", name: "openclaw", pkg: "@syntese/plugin-notifier-openclaw" },
+  { slot: "notifier", name: "slack", pkg: "@syntese/plugin-notifier-slack" },
+  { slot: "notifier", name: "webhook", pkg: "@syntese/plugin-notifier-webhook" },
   // Terminals
-  { slot: "terminal", name: "iterm2", pkg: "@composio/ao-plugin-terminal-iterm2" },
-  { slot: "terminal", name: "web", pkg: "@composio/ao-plugin-terminal-web" },
+  { slot: "terminal", name: "iterm2", pkg: "@syntese/plugin-terminal-iterm2" },
+  { slot: "terminal", name: "web", pkg: "@syntese/plugin-terminal-web" },
 ];
 
 /** Extract plugin-specific config from orchestrator config */

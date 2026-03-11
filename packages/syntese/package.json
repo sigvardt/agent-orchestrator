@@ -1,0 +1,29 @@
+{
+  "name": "@syntese/syntese",
+  "version": "0.1.0",
+  "description": "Orchestrate parallel AI coding agents — global CLI wrapper",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ao": "bin/ao.js",
+    "syntese": "bin/ao.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sigvardt/syntese.git",
+    "directory": "packages/syntese"
+  },
+  "homepage": "https://github.com/sigvardt/syntese",
+  "bugs": {
+    "url": "https://github.com/sigvardt/syntese/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@syntese/cli": "workspace:*"
+  }
+}

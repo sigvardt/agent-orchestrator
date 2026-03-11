@@ -115,7 +115,7 @@ pnpm eslint
 ### Test Status ✅
 
 ```bash
-pnpm --filter @agent-orchestrator/web test
+pnpm --filter @syntese/web test
 # ✓ 140 passed (143 total, 3 pre-existing failures in components.test.tsx)
 # ✓ All new tests pass:
 #   - cache.test.ts: 9/9 tests pass

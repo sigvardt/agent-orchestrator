@@ -14,7 +14,7 @@ case "$PROJECT" in
         SESSION_PREFIX="splitly"
         SESSION_DATA_DIR="$HOME/.splitly-sessions"
         ;;
-    agent-orchestrator|ao)
+    syntese|ao)
         SESSION_PREFIX="ao"
         SESSION_DATA_DIR="$HOME/.ao-sessions"
         ;;

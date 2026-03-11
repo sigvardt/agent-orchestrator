@@ -12,7 +12,7 @@ import type {
   RuntimeHandle,
   RuntimeMetrics,
   AttachInfo,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 const execFileAsync = promisify(execFile);
 const TMUX_COMMAND_TIMEOUT_MS = 5_000;

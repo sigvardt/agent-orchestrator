@@ -5,7 +5,7 @@ import { cwd } from "node:process";
 import { stringify as yamlStringify } from "yaml";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { generateSessionPrefix } from "@composio/ao-core";
+import { generateSessionPrefix } from "@syntese/core";
 import { git, gh, execSilent } from "../lib/shell.js";
 import { findFreePort, MAX_PORT_SCAN } from "../lib/web-dir.js";
 import {
@@ -144,8 +144,8 @@ async function detectEnvironment(workingDir: string): Promise<EnvironmentInfo> {
 export function registerInit(program: Command): void {
   program
     .command("init")
-    .description("Interactive setup wizard — creates agent-orchestrator.yaml")
-    .option("-o, --output <path>", "Output file path", "agent-orchestrator.yaml")
+    .description("Interactive setup wizard — creates syntese.yaml")
+    .option("-o, --output <path>", "Output file path", "syntese.yaml")
     .option("--auto", "Auto-generate config with sensible defaults (no prompts)")
     .option("--smart", "Analyze project and generate custom rules (coming soon — requires --auto)")
     .action(async (opts: { output: string; auto?: boolean; smart?: boolean }) => {
@@ -170,7 +170,7 @@ export function registerInit(program: Command): void {
         return;
       }
 
-      console.log(chalk.bold.cyan("\n  Agent Orchestrator — Setup Wizard\n"));
+      console.log(chalk.bold.cyan("\n  Syntese — Setup Wizard\n"));
       console.log(chalk.dim("  Detecting environment...\n"));
 
       const workingDir = cwd();
@@ -229,7 +229,7 @@ export function registerInit(program: Command): void {
         const dataDir = await prompt(
           rl,
           "Data directory (session metadata)",
-          "~/.agent-orchestrator",
+          "~/.syntese",
         );
         const worktreeDir = await prompt(rl, "Worktree directory", "~/.worktrees");
         const freePort = await findFreePort(DEFAULT_PORT);
@@ -400,7 +400,7 @@ export function registerInit(program: Command): void {
 async function handleAutoMode(outputPath: string, smart: boolean): Promise<void> {
   const workingDir = cwd();
 
-  console.log(chalk.bold.cyan("\n  Agent Orchestrator — Auto Setup\n"));
+  console.log(chalk.bold.cyan("\n  Syntese — Auto Setup\n"));
 
   if (smart) {
     console.log(chalk.dim("  🤖 Analyzing your project...\n"));
@@ -463,7 +463,7 @@ async function handleAutoMode(outputPath: string, smart: boolean): Promise<void>
     console.log(chalk.yellow(`  ⚠ Port ${DEFAULT_PORT} is busy — using ${port} instead.`));
   }
   const config: Record<string, unknown> = {
-    dataDir: "~/.agent-orchestrator",
+    dataDir: "~/.syntese",
     worktreeDir: "~/.worktrees",
     port: port ?? DEFAULT_PORT,
     defaults: {

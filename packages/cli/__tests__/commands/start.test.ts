@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { SessionManager } from "@composio/ao-core";
+import type { SessionManager } from "@syntese/core";
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks
@@ -68,9 +68,9 @@ vi.mock("ora", () => ({
   }),
 }));
 
-vi.mock("@composio/ao-core", async (importOriginal) => {
+vi.mock("@syntese/core", async (importOriginal) => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-  const actual = await importOriginal<typeof import("@composio/ao-core")>();
+  const actual = await importOriginal<typeof import("@syntese/core")>();
   const normalizeOrchestratorSessionStrategy =
     actual.normalizeOrchestratorSessionStrategy ??
     ((strategy: string | undefined) => {
@@ -233,7 +233,7 @@ afterEach(() => {
 
 function makeConfig(projects: Record<string, Record<string, unknown>>): Record<string, unknown> {
   return {
-    configPath: join(tmpDir, "agent-orchestrator.yaml"),
+    configPath: join(tmpDir, "syntese.yaml"),
     port: 3000,
     defaults: {
       runtime: "tmux",
@@ -393,7 +393,7 @@ describe("start command — URL argument", () => {
     ]);
 
     // Config should have been generated
-    expect(existsSync(join(repoDir, "agent-orchestrator.yaml"))).toBe(true);
+    expect(existsSync(join(repoDir, "syntese.yaml"))).toBe(true);
 
     const output = vi
       .mocked(console.log)
@@ -492,13 +492,13 @@ describe("start command — URL argument", () => {
     expect(output).toContain("Startup complete");
   });
 
-  it("uses existing config when repo already has agent-orchestrator.yaml", async () => {
+  it("uses existing config when repo already has syntese.yaml", async () => {
     const repoDir = join(tmpDir, "configured-app");
     createFakeRepo(repoDir, "https://github.com/owner/configured-app.git");
     mockCwd(tmpDir);
 
     writeFileSync(
-      join(repoDir, "agent-orchestrator.yaml"),
+      join(repoDir, "syntese.yaml"),
       [
         "port: 4000",
         "defaults:",
@@ -533,13 +533,55 @@ describe("start command — URL argument", () => {
     expect(output).toContain("Configured App");
   });
 
+  it("uses legacy agent-orchestrator.yaml when syntese.yaml is absent", async () => {
+    const repoDir = join(tmpDir, "legacy-configured-app");
+    createFakeRepo(repoDir, "https://github.com/owner/legacy-configured-app.git");
+    mockCwd(tmpDir);
+
+    writeFileSync(
+      join(repoDir, "agent-orchestrator.yaml"),
+      [
+        "port: 4000",
+        "defaults:",
+        "  runtime: tmux",
+        "  agent: claude-code",
+        "  workspace: worktree",
+        "  notifiers: [desktop]",
+        "projects:",
+        "  legacy-configured-app:",
+        "    name: Legacy Configured App",
+        "    repo: owner/legacy-configured-app",
+        `    path: ${repoDir}`,
+        "    defaultBranch: main",
+        "    sessionPrefix: lca",
+      ].join("\n"),
+    );
+
+    await program.parseAsync([
+      "node",
+      "test",
+      "start",
+      "https://github.com/owner/legacy-configured-app",
+      "--no-dashboard",
+      "--no-orchestrator",
+    ]);
+
+    const output = vi
+      .mocked(console.log)
+      .mock.calls.map((c) => c.join(" "))
+      .join("\n");
+    expect(output).toContain("Using existing config");
+    expect(output).toContain("agent-orchestrator.yaml");
+    expect(output).toContain("Legacy Configured App");
+  });
+
   it("resolves correct project when existing config has multiple projects", async () => {
     const repoDir = join(tmpDir, "multi-proj");
     createFakeRepo(repoDir, "https://github.com/org/multi-proj.git");
     mockCwd(tmpDir);
 
     writeFileSync(
-      join(repoDir, "agent-orchestrator.yaml"),
+      join(repoDir, "syntese.yaml"),
       [
         "port: 4000",
         "defaults:",

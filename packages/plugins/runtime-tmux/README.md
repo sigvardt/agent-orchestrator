@@ -1,4 +1,4 @@
-# Syntese tmux runtime plugin (`@agent-orchestrator/plugin-runtime-tmux`)
+# @syntese/plugin-runtime-tmux
 
 Runtime plugin for executing agent sessions in tmux.
 

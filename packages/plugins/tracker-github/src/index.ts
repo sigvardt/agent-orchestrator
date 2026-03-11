@@ -14,7 +14,7 @@ import type {
   IssueUpdate,
   CreateIssueInput,
   ProjectConfig,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 const execFileAsync = promisify(execFile);
 

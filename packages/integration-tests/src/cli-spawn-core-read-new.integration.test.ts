@@ -25,7 +25,7 @@ import {
   generateConfigHash,
   getSessionsDir,
   generateTmuxName,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { isTmuxAvailable, killSessionsByPrefix, killSession } from "./helpers/tmux.js";
 
 const tmuxOk = await isTmuxAvailable();
@@ -95,7 +95,7 @@ describe.skipIf(!tmuxOk)("CLI-Core integration (hash-based architecture)", () =>
       },
     };
 
-    configPath = join(tmpDir, "agent-orchestrator.yaml");
+    configPath = join(tmpDir, "syntese.yaml");
     await writeFile(configPath, JSON.stringify(config, null, 2));
   }, 30_000);
 
@@ -114,7 +114,7 @@ describe.skipIf(!tmuxOk)("CLI-Core integration (hash-based architecture)", () =>
     const hash = generateConfigHash(configPath);
     const sessionsDir = getSessionsDir(configPath, repoPath);
 
-    expect(sessionsDir).toMatch(new RegExp(`\\.agent-orchestrator/${hash}-test-repo/sessions$`));
+    expect(sessionsDir).toMatch(new RegExp(`\\.syntese/${hash}-test-repo/sessions$`));
   });
 
   it("session metadata includes tmuxName field", () => {

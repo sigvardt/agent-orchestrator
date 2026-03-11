@@ -129,7 +129,7 @@ beforeEach(() => {
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
   // Create a temporary config file
-  configPath = join(tmpDir, "agent-orchestrator.yaml");
+  configPath = join(tmpDir, "syntese.yaml");
   writeFileSync(configPath, "projects: {}\n");
 
   mockRuntime = {
@@ -225,7 +225,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 
-  // Clean up hash-based directories in ~/.agent-orchestrator
+  // Clean up hash-based directories in ~/.syntese
   const projectBaseDir = getProjectBaseDir(configPath, join(tmpDir, "my-app"));
   if (existsSync(projectBaseDir)) {
     rmSync(projectBaseDir, { recursive: true, force: true });
@@ -287,7 +287,7 @@ describe("progress snapshots", () => {
     mkdirSync(repoPath, { recursive: true });
     runGit(repoPath, "init");
     runGit(repoPath, "config", "user.email", "ao@example.com");
-    runGit(repoPath, "config", "user.name", "Agent Orchestrator");
+    runGit(repoPath, "config", "user.name", "Syntese");
     writeFileSync(join(repoPath, "app.txt"), "hello\n");
     runGit(repoPath, "add", "app.txt");
     runGit(repoPath, "commit", "-m", "init");

@@ -9,7 +9,7 @@ import {
   type PluginRegistry,
   type Session,
   type UsageSnapshot,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { getDashboardUsage } from "../usage";
 
 function makeSession(overrides: Partial<Session> = {}): Session {
@@ -115,7 +115,7 @@ describe("getDashboardUsage", () => {
     await mkdir(appPath, { recursive: true });
     await mkdir(docsPath, { recursive: true });
 
-    configPath = join(configDir, "agent-orchestrator.yaml");
+    configPath = join(configDir, "syntese.yaml");
     await writeFile(configPath, "projects: {}\n", "utf-8");
 
     config = makeConfig(configPath, { app: appPath, docs: docsPath });

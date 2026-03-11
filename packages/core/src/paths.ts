@@ -3,7 +3,8 @@
  *
  * Architecture:
  * - Config location determines hash: sha256(dirname(configPath)).slice(0, 12)
- * - Each project gets directory: ~/.agent-orchestrator/{hash}-{projectId}/
+ * - Each project gets directory: ~/.syntese/{hash}-{projectId}/
+ *   Falls back to ~/.agent-orchestrator/{hash}-{projectId}/ when only legacy data exists
  * - Sessions inside: sessions/{sessionName} (no hash prefix, already namespaced)
  * - Tmux names include hash for global uniqueness: {hash}-{prefix}-{num}
  */
@@ -12,6 +13,9 @@ import { createHash } from "node:crypto";
 import { dirname, basename, join } from "node:path";
 import { homedir } from "node:os";
 import { realpathSync, existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+
+const PRIMARY_DATA_DIR = "~/.syntese";
+const LEGACY_DATA_DIR = "~/.agent-orchestrator";
 
 /**
  * Generate a 12-character hash from a config directory path.
@@ -49,7 +53,7 @@ export function generateInstanceId(configPath: string, projectPath: string): str
  * Rules:
  * 1. ≤4 chars: use as-is (lowercase)
  * 2. CamelCase: extract uppercase letters (PyTorch → pt)
- * 3. kebab/snake case: use initials (agent-orchestrator → ao)
+ * 3. kebab/snake case: use initials (my-app → ma)
  * 4. Single word: first 3 chars (integrator → int)
  */
 export function generateSessionPrefix(projectId: string): string {
@@ -78,17 +82,34 @@ export function generateSessionPrefix(projectId: string): string {
 }
 
 /**
+ * Resolve the data root for project state.
+ * Prefer the new ~/.syntese directory, but keep using the legacy
+ * ~/.agent-orchestrator directory when it already exists and the new one does not.
+ */
+export function getDataRootDir(): string {
+  const primaryDir = expandHome(PRIMARY_DATA_DIR);
+  const legacyDir = expandHome(LEGACY_DATA_DIR);
+
+  if (!existsSync(primaryDir) && existsSync(legacyDir)) {
+    return legacyDir;
+  }
+
+  return primaryDir;
+}
+
+/**
  * Get the project base directory for a given config and project.
- * Format: ~/.agent-orchestrator/{hash}-{projectId}
+ * Format: ~/.syntese/{hash}-{projectId}
+ * Falls back to ~/.agent-orchestrator/{hash}-{projectId} when only legacy data exists.
  */
 export function getProjectBaseDir(configPath: string, projectPath: string): string {
   const instanceId = generateInstanceId(configPath, projectPath);
-  return join(expandHome("~/.agent-orchestrator"), instanceId);
+  return join(getDataRootDir(), instanceId);
 }
 
 /**
  * Get the sessions directory for a project.
- * Format: ~/.agent-orchestrator/{hash}-{projectId}/sessions
+ * Format: ~/.syntese/{hash}-{projectId}/sessions
  */
 export function getSessionsDir(configPath: string, projectPath: string): string {
   return join(getProjectBaseDir(configPath, projectPath), "sessions");
@@ -96,7 +117,7 @@ export function getSessionsDir(configPath: string, projectPath: string): string 
 
 /**
  * Get the worktrees directory for a project.
- * Format: ~/.agent-orchestrator/{hash}-{projectId}/worktrees
+ * Format: ~/.syntese/{hash}-{projectId}/worktrees
  */
 export function getWorktreesDir(configPath: string, projectPath: string): string {
   return join(getProjectBaseDir(configPath, projectPath), "worktrees");
@@ -104,7 +125,7 @@ export function getWorktreesDir(configPath: string, projectPath: string): string
 
 /**
  * Get the feedback reports directory for a project.
- * Format: ~/.agent-orchestrator/{hash}-{projectId}/feedback-reports
+ * Format: ~/.syntese/{hash}-{projectId}/feedback-reports
  */
 export function getFeedbackReportsDir(configPath: string, projectPath: string): string {
   return join(getProjectBaseDir(configPath, projectPath), "feedback-reports");
@@ -112,7 +133,7 @@ export function getFeedbackReportsDir(configPath: string, projectPath: string): 
 
 /**
  * Get the archive directory for a project.
- * Format: ~/.agent-orchestrator/{hash}-{projectId}/archive
+ * Format: ~/.syntese/{hash}-{projectId}/archive
  */
 export function getArchiveDir(configPath: string, projectPath: string): string {
   return join(getSessionsDir(configPath, projectPath), "archive");

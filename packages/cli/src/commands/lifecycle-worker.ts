@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig } from "@composio/ao-core";
+import { loadConfig } from "@syntese/core";
 import { getLifecycleManager } from "../lib/create-session-manager.js";
 import {
   clearLifecycleWorkerPid,

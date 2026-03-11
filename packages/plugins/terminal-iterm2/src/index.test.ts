@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import type { Session } from "@composio/ao-core";
+import type { Session } from "@syntese/core";
 
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
 }));
 
-vi.mock("node:os", () => ({
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal()),
   platform: vi.fn(() => "darwin"),
 }));
 

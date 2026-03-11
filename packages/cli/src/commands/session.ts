@@ -6,7 +6,7 @@ import {
   SessionNotRestorableError,
   WorkspaceMissingError,
   type SessionKillStepResult,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { git, getTmuxActivity, tmux } from "../lib/shell.js";
 import { formatAge } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";

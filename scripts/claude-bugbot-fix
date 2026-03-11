@@ -24,8 +24,8 @@ case "$PROJECT" in
         SESSIONS_DIR="$HOME/.splitly-sessions"
         SESSION_PREFIX="splitly"
         ;;
-    agent-orchestrator|ao)
-        REPO="ComposioHQ/agent-orchestrator"
+    syntese|ao)
+        REPO="sigvardt/syntese"
         SESSIONS_DIR="$HOME/.ao-sessions"
         SESSION_PREFIX="ao"
         ;;

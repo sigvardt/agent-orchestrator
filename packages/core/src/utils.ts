@@ -1,5 +1,5 @@
 /**
- * Shared utility functions for agent-orchestrator plugins.
+ * Shared utility functions for Syntese plugins.
  */
 
 import { open, stat } from "node:fs/promises";
@@ -50,9 +50,10 @@ export function normalizeRetryConfig(
   const rawRetries = config?.retries as number | undefined;
   const rawDelay = config?.retryDelayMs as number | undefined;
   const retries = Number.isFinite(rawRetries) ? Math.max(0, rawRetries ?? 0) : defaults.retries;
-  const retryDelayMs = Number.isFinite(rawDelay) && (rawDelay ?? -1) >= 0
-    ? (rawDelay as number)
-    : defaults.retryDelayMs;
+  const retryDelayMs =
+    Number.isFinite(rawDelay) && (rawDelay ?? -1) >= 0
+      ? (rawDelay as number)
+      : defaults.retryDelayMs;
   return { retries, retryDelayMs };
 }
 

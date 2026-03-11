@@ -37,8 +37,8 @@ import { createSessionManager } from "../session-manager.js";
 import { createLifecycleManager } from "../lifecycle-manager.js";
 import { writeMetadata } from "../metadata.js";
 import { getSessionsDir } from "../paths.js";
-import trackerGithub from "@composio/ao-plugin-tracker-github";
-import scmGithub from "@composio/ao-plugin-scm-github";
+import trackerGithub from "@syntese/plugin-tracker-github";
+import scmGithub from "@syntese/plugin-scm-github";
 import type {
   OrchestratorConfig,
   PluginRegistry,
@@ -113,7 +113,7 @@ beforeEach(() => {
   mkdirSync(tmpDir, { recursive: true });
 
   // Create a temporary config file
-  configPath = join(tmpDir, "agent-orchestrator.yaml");
+  configPath = join(tmpDir, "syntese.yaml");
   writeFileSync(configPath, "projects: {}\n");
 
   // Initialize project with tmpDir-based path

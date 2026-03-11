@@ -10,7 +10,7 @@ import {
   type RuntimeHandle,
   type Session,
   type OpenCodeAgentConfig,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 

@@ -378,7 +378,7 @@ export class CodexAppServerClient extends EventEmitter {
     const result = await this.sendRequest("initialize", {
       clientInfo: {
         name: "ao-agent-codex",
-        title: "Agent Orchestrator — Codex Plugin",
+        title: "Syntese — Codex Plugin",
         version: "0.1.1",
       },
     });

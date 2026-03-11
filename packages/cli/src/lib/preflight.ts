@@ -19,20 +19,18 @@ import { exec } from "./shell.js";
 async function checkPort(port: number): Promise<void> {
   const free = await isPortAvailable(port);
   if (!free) {
-    throw new Error(
-      `Port ${port} is already in use. Free it or change 'port' in agent-orchestrator.yaml.`,
-    );
+    throw new Error(`Port ${port} is already in use. Free it or change 'port' in syntese.yaml.`);
   }
 }
 
 /**
  * Check that workspace packages have been compiled (TypeScript → JavaScript).
- * Verifies @composio/ao-core dist output exists from the web package's
+ * Verifies @syntese/core dist output exists from the web package's
  * node_modules, since a missing dist/ causes module resolution errors when
  * starting the dashboard. Works with both `next dev` and `next build`.
  */
 async function checkBuilt(webDir: string): Promise<void> {
-  const nodeModules = resolve(webDir, "node_modules", "@composio", "ao-core");
+  const nodeModules = resolve(webDir, "node_modules", "@syntese", "core");
   if (!existsSync(nodeModules)) {
     throw new Error("Dependencies not installed. Run: pnpm install && pnpm build");
   }

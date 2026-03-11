@@ -33,13 +33,13 @@ fail_step() {
 
 # Test starts here
 echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║  Agent Orchestrator - Onboarding Integration Test     ║${NC}"
+echo -e "${BLUE}║  Syntese - Onboarding Integration Test     ║${NC}"
 echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
 echo ""
 
 # Step 1: Simulate git clone (already done by Docker COPY, but we cd into it)
 start_step "Step 1: Navigate to repository"
-cd /workspace/agent-orchestrator || fail_step "Repository not found"
+cd /workspace/syntese || fail_step "Repository not found"
 end_step "Step 1: Repository accessible"
 
 # Step 2: Run setup script
@@ -65,7 +65,7 @@ git init
 git config user.email "test@example.com"
 git config user.name "Test User"
 
-cat > agent-orchestrator.yaml << 'EOF'
+cat > syntese.yaml << 'EOF'
 dataDir: /tmp/ao-test-data
 worktreeDir: /tmp/ao-test-worktrees
 port: 9000
@@ -82,7 +82,7 @@ end_step "Step 4: Configuration created"
 # Step 5: Verify config is valid
 start_step "Step 5: Validate configuration"
 # ao init would fail if run again, so we just verify the file is readable
-if [ ! -f agent-orchestrator.yaml ]; then
+if [ ! -f syntese.yaml ]; then
     fail_step "Step 5: Config file not found"
 fi
 end_step "Step 5: Configuration validated"

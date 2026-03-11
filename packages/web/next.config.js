@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@composio/ao-core"],
+  transpilePackages: ["@syntese/core"],
 };
 
 export default nextConfig;

@@ -2,7 +2,7 @@ import {
   applyVerificationToMergeability,
   evaluatePostPushVerification,
   resolveMergeMethod,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { type NextRequest, NextResponse } from "next/server";
 import { getServices, getSCM } from "@/lib/services";
 

@@ -9,7 +9,7 @@ import {
   isPRMergeReady,
   isVerificationBlocker,
 } from "@/lib/types";
-import { CI_STATUS } from "@composio/ao-core/types";
+import { CI_STATUS } from "@syntese/core/types";
 import { cn } from "@/lib/cn";
 import { CICheckList } from "./CIBadge";
 import { DirectTerminal } from "./DirectTerminal";

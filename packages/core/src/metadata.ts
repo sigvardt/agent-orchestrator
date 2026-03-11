@@ -3,7 +3,7 @@
  *
  * Architecture:
  * - Session metadata stored in project-specific directories
- * - Path: ~/.agent-orchestrator/{hash}-{projectId}/sessions/{sessionName}
+ * - Path: ~/.syntese/{hash}-{projectId}/sessions/{sessionName}
  * - Session files use user-facing names (int-1) not tmux names (a3b4c5d6e7f8-int-1)
  * - Metadata includes tmuxName field to map user-facing → tmux name
  *
@@ -11,7 +11,7 @@
  *
  * Example file contents:
  *   project=integrator
- *   worktree=/Users/foo/.agent-orchestrator/a3b4c5d6e7f8-integrator/worktrees/int-1
+ *   worktree=/Users/foo/.syntese/a3b4c5d6e7f8-integrator/worktrees/int-1
  *   branch=feat/INT-1234
  *   status=working
  *   tmuxName=a3b4c5d6e7f8-int-1

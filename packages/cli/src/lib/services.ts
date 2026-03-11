@@ -1,9 +1,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { request } from "node:http";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { generateConfigHash, type OrchestratorConfig } from "@composio/ao-core";
+import { generateConfigHash, getDataRootDir, type OrchestratorConfig } from "@syntese/core";
 import { exec, execSilent } from "./shell.js";
 import { findWebDir, isPortAvailable } from "./web-dir.js";
 
@@ -134,7 +142,7 @@ function clearPidFile(pidFile: string, expectedPid?: number): void {
 }
 
 function getSupervisorStateDir(configPath: string): string {
-  return join(homedir(), ".agent-orchestrator", "services", generateConfigHash(configPath));
+  return join(getDataRootDir(), "services", generateConfigHash(configPath));
 }
 
 function getSupervisorPidFile(configPath: string): string {
@@ -263,14 +271,8 @@ async function writeSystemdUnits(
 
   const units = getSystemdUnits(context.hash);
   const files: Array<[string, string]> = [
-    [
-      units.dashboard,
-      buildSystemdUnitContent("dashboard", context, "start:dashboard"),
-    ],
-    [
-      units.terminalWs,
-      buildSystemdUnitContent("terminal-ws", context, "start:terminal"),
-    ],
+    [units.dashboard, buildSystemdUnitContent("dashboard", context, "start:dashboard")],
+    [units.terminalWs, buildSystemdUnitContent("terminal-ws", context, "start:terminal")],
     [
       units.directTerminalWs,
       buildSystemdUnitContent("direct-terminal-ws", context, "start:direct-terminal"),
@@ -312,7 +314,9 @@ async function getSystemdState(unit: string): Promise<string> {
   return state?.trim() || "missing";
 }
 
-async function getSystemdProcessStates(units: SystemdUnits): Promise<Record<ManagedServiceId, string>> {
+async function getSystemdProcessStates(
+  units: SystemdUnits,
+): Promise<Record<ManagedServiceId, string>> {
   const [dashboard, terminalWs, directTerminalWs] = await Promise.all([
     getSystemdState(units.dashboard),
     getSystemdState(units.terminalWs),
@@ -348,7 +352,9 @@ async function stopSystemdServices(context: ServiceContext): Promise<void> {
   ]);
 }
 
-async function startSupervisor(config: OrchestratorConfig): Promise<{ started: boolean; pid: number | null }> {
+async function startSupervisor(
+  config: OrchestratorConfig,
+): Promise<{ started: boolean; pid: number | null }> {
   const status = getSupervisorStatus(config.configPath);
   if (status.running) {
     return { started: false, pid: status.pid };
@@ -516,7 +522,8 @@ async function probeDashboard(port: number): Promise<ManagedServiceHealth> {
   }
 
   const probe = await httpProbe(port, "/");
-  const healthy = probe.error === null && probe.status !== null && probe.status >= 200 && probe.status < 500;
+  const healthy =
+    probe.error === null && probe.status !== null && probe.status >= 200 && probe.status < 500;
 
   return {
     id: "dashboard",
@@ -524,14 +531,15 @@ async function probeDashboard(port: number): Promise<ManagedServiceHealth> {
     listening,
     healthy,
     httpStatus: probe.status,
-    details: probe.error ? `http error: ${probe.error}` : healthy ? "ready" : `http ${probe.status ?? "?"}`,
+    details: probe.error
+      ? `http error: ${probe.error}`
+      : healthy
+        ? "ready"
+        : `http ${probe.status ?? "?"}`,
   };
 }
 
-async function probeTerminal(
-  id: ManagedServiceId,
-  port: number,
-): Promise<ManagedServiceHealth> {
+async function probeTerminal(id: ManagedServiceId, port: number): Promise<ManagedServiceHealth> {
   const listening = !(await isPortAvailable(port));
   if (!listening) {
     return {
@@ -564,9 +572,7 @@ async function probeTerminal(
   };
 }
 
-export async function probeManagedServices(
-  ports: ServicePorts,
-): Promise<ManagedServiceHealth[]> {
+export async function probeManagedServices(ports: ServicePorts): Promise<ManagedServiceHealth[]> {
   const [dashboard, terminalWs, directTerminalWs] = await Promise.all([
     probeDashboard(ports.dashboard),
     probeTerminal("terminal-ws", ports.terminalWs),

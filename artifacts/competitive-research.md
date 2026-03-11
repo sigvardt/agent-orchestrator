@@ -8,7 +8,7 @@ Research into 16+ projects that orchestrate AI coding agents. The goal: understa
 
 ---
 
-## Tier 1: Direct Competitors (Multi-Agent Orchestrators)
+## Tier 1: Direct Competitors (Multi-Synteses)
 
 ### Gas Town (Steve Yegge)
 
@@ -85,9 +85,9 @@ Research into 16+ projects that orchestrate AI coding agents. The goal: understa
 
 ---
 
-### CAO — CLI Agent Orchestrator (AWS Labs)
+### CAO — CLI Syntese (AWS Labs)
 
-- **GitHub**: https://github.com/awslabs/cli-agent-orchestrator
+- **GitHub**: https://github.com/awslabs/cli-syntese
 - **Stack**: Python, tmux, HTTP server (localhost:9889)
 
 **Key Abstractions:**
@@ -411,7 +411,7 @@ Agent code remains the same regardless of deployment target.
 - [Gas Town Architecture Analysis](https://reading.torqsoftware.com/notes/software/ai-ml/agentic-coding/2026-01-15-gas-town-multi-agent-orchestration-framework/)
 - [Gas Town: Two Kinds of Multi-Agent](https://paddo.dev/blog/gastown-two-kinds-of-multi-agent/)
 - [Par](https://github.com/coplane/par)
-- [CAO](https://github.com/awslabs/cli-agent-orchestrator)
+- [CAO](https://github.com/awslabs/cli-syntese)
 - [ccswarm](https://github.com/nwiizo/ccswarm)
 - [agent-team](https://github.com/nekocode/agent-team)
 - [claude-flow](https://github.com/ruvnet/claude-flow)
@@ -426,7 +426,7 @@ Agent code remains the same regardless of deployment target.
 - [wshobson/agents](https://github.com/wshobson/agents)
 - [LangChain: Two Agent-Sandbox Patterns](https://blog.langchain.com/the-two-patterns-by-which-agents-connect-sandboxes/)
 - [Modal: Top Code Sandbox Products](https://modal.com/blog/top-code-agent-sandbox-products)
-- [Rise of Coding Agent Orchestrators](https://www.aviator.co/blog/the-rise-of-coding-agent-orchestrators/)
+- [Rise of Coding Synteses](https://www.aviator.co/blog/the-rise-of-coding-synteses/)
 - [E2B](https://e2b.dev/)
 - [Daytona](https://www.daytona.io/)
 - [Fly.io AI](https://fly.io/ai)

@@ -9,7 +9,7 @@ import type {
   WorkspaceCreateConfig,
   WorkspaceInfo,
   ProjectConfig,
-} from "@composio/ao-core";
+} from "@syntese/core";
 
 const execFileAsync = promisify(execFile);
 

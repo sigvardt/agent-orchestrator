@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig } from "@composio/ao-core";
+import { loadConfig } from "@syntese/core";
 import { findWebDir, buildDashboardEnv, waitForPortAndOpen } from "../lib/web-dir.js";
 import { cleanNextCache, findRunningDashboardPid, findProcessWebDir, waitForPortFree } from "../lib/dashboard-rebuild.js";
 
@@ -28,7 +28,7 @@ export function registerDashboard(program: Command): void {
       if (!existsSync(resolve(localWebDir, "package.json"))) {
         console.error(
           chalk.red(
-            "Could not find @composio/ao-web package.\n" + "Ensure it is installed: pnpm install",
+            "Could not find @syntese/web package.\n" + "Ensure it is installed: pnpm install",
           ),
         );
         process.exit(1);

@@ -1,5 +1,5 @@
 /**
- * Agent Orchestrator — Core Type Definitions
+ * Syntese — Core Type Definitions
  *
  * This file defines ALL interfaces and types that the system uses.
  * Every plugin, CLI command, and web API route builds against these.
@@ -987,7 +987,7 @@ export interface ReactionResult {
 // CONFIGURATION
 // =============================================================================
 
-/** Top-level orchestrator configuration (from agent-orchestrator.yaml) */
+/** Top-level orchestrator configuration (from syntese.yaml, with legacy agent-orchestrator.yaml support) */
 export interface OrchestratorConfig {
   /**
    * Path to the config file (set automatically during load).

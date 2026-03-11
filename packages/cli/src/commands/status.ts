@@ -11,7 +11,7 @@ import {
   type Tracker,
   type ProjectConfig,
   loadConfig,
-} from "@composio/ao-core";
+} from "@syntese/core";
 import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import {
   banner,
@@ -215,7 +215,7 @@ export function registerStatus(program: Command): void {
       const sessions = await sm.list(opts.project);
 
       if (!opts.json) {
-        console.log(banner("AGENT ORCHESTRATOR STATUS"));
+        console.log(banner("SYNTESE STATUS"));
         console.log();
       }
 
@@ -291,7 +291,7 @@ export function registerStatus(program: Command): void {
 
         // Check for issues awaiting verification across all projects
         try {
-          const { createPluginRegistry } = await import("@composio/ao-core");
+          const { createPluginRegistry } = await import("@syntese/core");
           const registry = createPluginRegistry();
           await registry.loadFromConfig(config, (pkg: string) => import(pkg));
 
@@ -335,7 +335,7 @@ async function showFallbackStatus(): Promise<void> {
     return;
   }
 
-  console.log(banner("AGENT ORCHESTRATOR STATUS"));
+  console.log(banner("SYNTESE STATUS"));
   console.log();
   console.log(
     chalk.dim(`  ${allTmux.length} tmux session${allTmux.length !== 1 ? "s" : ""} found\n`),

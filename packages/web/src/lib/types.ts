@@ -2,7 +2,7 @@
  * Dashboard-specific types for the web UI.
  *
  * Core types (SessionStatus, ActivityState, CIStatus, ReviewDecision, etc.)
- * are re-exported from @composio/ao-core. Dashboard-specific types
+ * are re-exported from @syntese/core. Dashboard-specific types
  * extend/flatten the core types for client-side rendering (e.g. DashboardPR
  * flattens core PRInfo + MergeReadiness + CICheck[] + ReviewComment[]).
  */
@@ -19,7 +19,7 @@ export type {
   UsageDial,
   UsageProvider,
   UsageSnapshot,
-} from "@composio/ao-core/types";
+} from "@syntese/core/types";
 
 // Re-export global pause state from shared lib (provider-agnostic state contract)
 export type { GlobalPauseState } from "./global-pause";
@@ -41,7 +41,7 @@ import {
   type UsageDial,
   type UsageProvider,
   type UsageSnapshot,
-} from "@composio/ao-core/types";
+} from "@syntese/core/types";
 
 // Re-export for use in client components
 export { TERMINAL_STATUSES, TERMINAL_ACTIVITIES, NON_RESTORABLE_STATUSES };

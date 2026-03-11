@@ -42,7 +42,7 @@ vi.mock("../../src/lib/session-utils.js", () => ({
   findProjectForSession: () => null,
 }));
 
-vi.mock("@composio/ao-core", () => ({
+vi.mock("@syntese/core", () => ({
   loadConfig: () => {
     if (!mockConfigRef.current) {
       throw new Error("no config");
@@ -270,7 +270,7 @@ describe("send command", () => {
   describe("session manager integration", () => {
     function makeConfig(): Record<string, unknown> {
       return {
-        configPath: "/tmp/agent-orchestrator.yaml",
+        configPath: "/tmp/syntese.yaml",
         defaults: {
           runtime: "tmux",
           agent: "claude-code",

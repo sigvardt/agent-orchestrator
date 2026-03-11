@@ -24,7 +24,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 WORKDIR /workspace
 
 # Copy the entire repo (simulates git clone)
-COPY . /workspace/agent-orchestrator
+COPY . /workspace/syntese
 
 # Create a test user (simulates developer's home directory)
 RUN useradd -m -s /bin/bash testuser

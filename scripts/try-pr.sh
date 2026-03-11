@@ -55,15 +55,15 @@ cd "$WORKTREE"
 # ── build CLI/core/plugins ─────────────────────────────────────────────────────
 echo -e "\n${BOLD}Building $SESSION${RESET} (branch: ${CYAN}$BRANCH${RESET})\n"
 
-pnpm --filter @composio/ao-core \
-     --filter @composio/ao-cli \
-     --filter '@composio/ao-plugin-*' \
+pnpm --filter @syntese/core \
+     --filter @syntese/cli \
+     --filter '@syntese/plugin-*' \
      build
 
 # ── build web if requested ─────────────────────────────────────────────────────
 if [ "$WITH_WEB" = true ]; then
   echo -e "\n${BOLD}Building dashboard...${RESET}\n"
-  pnpm --filter @composio/ao-web build
+  pnpm --filter @syntese/web build
 fi
 
 # ── link ao ───────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ if [ "$WITH_WEB" = true ]; then
   done
 
   # Use the real config so the PR dashboard shows actual sessions
-  REAL_CONFIG="$MAIN_REPO/agent-orchestrator.yaml"
+  REAL_CONFIG="$MAIN_REPO/syntese.yaml"
   if [ ! -f "$REAL_CONFIG" ]; then
     REAL_CONFIG="${AO_CONFIG_PATH:-}"
   fi

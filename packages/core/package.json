@@ -1,5 +1,5 @@
 {
-  "name": "@composio/ao-core",
+  "name": "@syntese/core",
   "version": "0.1.0",
   "description": "Core library — types, config, session manager, lifecycle manager, event bus",
   "license": "MIT",
@@ -25,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ComposioHQ/agent-orchestrator.git",
+    "url": "https://github.com/sigvardt/syntese.git",
     "directory": "packages/core"
   },
-  "homepage": "https://github.com/ComposioHQ/agent-orchestrator",
+  "homepage": "https://github.com/sigvardt/syntese",
   "bugs": {
-    "url": "https://github.com/ComposioHQ/agent-orchestrator/issues"
+    "url": "https://github.com/sigvardt/syntese/issues"
   },
   "engines": {
     "node": ">=20.0.0"

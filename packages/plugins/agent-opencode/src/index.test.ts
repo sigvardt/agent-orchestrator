@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Session, RuntimeHandle, AgentLaunchConfig } from "@composio/ao-core";
+import type { Session, RuntimeHandle, AgentLaunchConfig } from "@syntese/core";
 
 const mockExecFileAsync = vi.fn();
 vi.mock("node:child_process", () => ({

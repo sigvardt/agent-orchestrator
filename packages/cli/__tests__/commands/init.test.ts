@@ -17,7 +17,7 @@ afterEach(() => {
 describe("init command", () => {
   it("rejects when config file already exists", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
     writeFileSync(outputPath, "existing: true\n");
 
     const program = new Command();
@@ -39,7 +39,7 @@ describe("init command", () => {
 
   it("auto mode uses port 3000 when it is available", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
 
     // Mock findFreePort so test doesn't depend on actual port 3000 being free
     const webDirModule = await import("../../src/lib/web-dir.js");
@@ -59,7 +59,7 @@ describe("init command", () => {
 
   it("auto mode picks next free port when 3000 is occupied", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
 
     // Mock free-port discovery to avoid relying on host port availability
     const webDirModule = await import("../../src/lib/web-dir.js");
@@ -79,7 +79,7 @@ describe("init command", () => {
 
   it("auto mode tells user when default port is busy and which port it picked", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
 
     // Mock free-port discovery to avoid relying on host port availability
     const webDirModule = await import("../../src/lib/web-dir.js");
@@ -101,7 +101,7 @@ describe("init command", () => {
 
   it("auto mode writes name and sessionPrefix to project config", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
 
     const program = new Command();
     program.exitOverride();
@@ -132,7 +132,7 @@ describe("init command", () => {
 
   it("auto mode warns when no free port is found", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
 
     // Mock findFreePort to return null (all ports busy)
     const webDirModule = await import("../../src/lib/web-dir.js");
@@ -170,13 +170,13 @@ describe("init command", () => {
 
   it("auto mode sessionPrefix uses core generateSessionPrefix heuristics", async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
-    const outputPath = join(tmpDir, "agent-orchestrator.yaml");
+    const outputPath = join(tmpDir, "syntese.yaml");
 
     // Run from a directory whose basename is kebab-case
     // The cwd() in init.ts determines the projectId via basename()
     // We can't easily control cwd in tests, but we can verify the prefix
     // is consistent with generateSessionPrefix for whatever projectId is used
-    const { generateSessionPrefix } = await import("@composio/ao-core");
+    const { generateSessionPrefix } = await import("@syntese/core");
 
     const program = new Command();
     program.exitOverride();

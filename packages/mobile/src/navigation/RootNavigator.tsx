@@ -49,7 +49,7 @@ export default function RootNavigator() {
         <Stack.Screen
           name="Home"
           component={HomeScreen}
-          options={{ title: "Agent Orchestrator" }}
+          options={{ title: "Syntese" }}
         />
         <Stack.Screen
           name="SessionDetail"

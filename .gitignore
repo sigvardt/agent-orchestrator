@@ -54,9 +54,11 @@ id_ed25519
 # Development symlinks (created per-worktree, not committed)
 .claude
 .sisyphus
+packages/web/syntese.yaml
 packages/web/agent-orchestrator.yaml
 
-# Local agent orchestrator config (may contain secrets)
+# Local syntese config (may contain secrets)
+syntese.yaml
 agent-orchestrator.yaml
 
 # Agent configuration and tracking (personal, not for repo)

@@ -38,11 +38,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build non-web packages
-        run: pnpm -r --filter '!@composio/ao-web' build
+        run: pnpm -r --filter '!@syntese/web' build
       - name: Typecheck non-web packages
-        run: pnpm -r --filter '!@composio/ao-web' typecheck
+        run: pnpm -r --filter '!@syntese/web' typecheck
       - name: Build web
-        run: pnpm --filter @composio/ao-web build
+        run: pnpm --filter @syntese/web build
 
   test:
     if: github.repository == 'sigvardt/syntese'
@@ -57,7 +57,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build non-web packages
-        run: pnpm -r --filter '!@composio/ao-web' build
+        run: pnpm -r --filter '!@syntese/web' build
       - name: Run package unit tests
         run: pnpm test
 
@@ -74,7 +74,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build non-web packages
-        run: pnpm -r --filter '!@composio/ao-web' build
+        run: pnpm -r --filter '!@syntese/web' build
       - name: Run web server unit tests
         working-directory: packages/web
         run: pnpm exec vitest run server/__tests__/server-compatibility.test.ts server/__tests__/tmux-utils.test.ts
