@@ -81,6 +81,9 @@ const ReactionConfigSchema = z.object({
   escalateAfter: z.union([z.number(), z.string()]).optional(),
   threshold: z.string().optional(),
   maxRuntime: z.string().optional(),
+  firstCommit: z.string().optional(),
+  firstPR: z.string().optional(),
+  checkpointMessage: z.string().optional(),
   includeSummary: z.boolean().optional(),
 });
 
@@ -408,6 +411,11 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
       priority: "urgent",
       refireIntervalMs: 300_000,
       threshold: "10m",
+    },
+    "progress-checkpoints": {
+      auto: true,
+      action: "notify",
+      priority: "warning",
     },
     "agent-needs-input": {
       auto: true,

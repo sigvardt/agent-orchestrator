@@ -146,6 +146,11 @@ reactions:
     auto: true
     action: send-to-agent
     retries: 2
+  progress-checkpoints:
+    firstCommit: 15m
+    firstPR: 45m
+    action: send-to-agent
+    checkpointMessage: Please push your current progress and open a draft PR.
   changes-requested:
     auto: true
     action: send-to-agent
@@ -155,7 +160,7 @@ reactions:
     action: notify
 ```
 
-CI fails → agent gets the logs and fixes it. Reviewer requests changes → agent addresses them. PR approved with green CI → you get a notification to merge.
+CI fails → agent gets the logs and fixes it. Reviewers request changes → agent addresses them. Progress checkpoints nudge slow-to-commit sessions back onto a commit/PR workflow. PR approved with green CI → you get a notification to merge.
 
 If a project needs live verification beyond CI, `verification.postPush` runs a project-defined command after each new pushed `HEAD`. `block-merge` prevents auto-merge and the dashboard merge action until that verification passes.
 

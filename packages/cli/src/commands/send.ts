@@ -6,8 +6,11 @@ import type { Command } from "commander";
 import {
   type Agent,
   type OpenCodeSessionManager,
+  type OrchestratorConfig,
   type Session,
+  getSessionsDir,
   loadConfig,
+  updateMetadata,
 } from "@syntese/core";
 import { exec, tmux } from "../lib/shell.js";
 import { getAgentByName } from "../lib/plugins.js";
@@ -18,6 +21,7 @@ import { getSessionManager } from "../lib/create-session-manager.js";
  * Loads config and looks up the session once, avoiding duplicate work.
  */
 async function resolveSessionContext(sessionName: string): Promise<{
+  config: OrchestratorConfig | null;
   tmuxTarget: string;
   runtimeName?: string;
   agent: Agent;
@@ -35,6 +39,7 @@ async function resolveSessionContext(sessionName: string): Promise<{
       const runtimeName =
         session.runtimeHandle?.runtimeName ?? project?.runtime ?? config.defaults.runtime;
       return {
+        config,
         tmuxTarget,
         runtimeName,
         agent: getAgentByName(agentName),
@@ -46,12 +51,32 @@ async function resolveSessionContext(sessionName: string): Promise<{
     // No config or session not found — fall back to defaults
   }
   return {
+    config: null,
     tmuxTarget: sessionName,
     runtimeName: "tmux",
     agent: getAgentByName("claude-code"),
     session: null,
     sessionManager: null,
   };
+}
+
+function markProgressCheckpointReset(
+  config: OrchestratorConfig | null,
+  session: Session | null,
+): void {
+  if (!config || !session) {
+    return;
+  }
+
+  const project = config.projects[session.projectId];
+  if (!project) {
+    return;
+  }
+
+  const sessionsDir = getSessionsDir(config.configPath, project.path);
+  updateMetadata(sessionsDir, session.id, {
+    progressCheckpointResetAt: new Date().toISOString(),
+  });
 }
 
 function isActive(agent: Agent, terminalOutput: string): boolean {
@@ -127,6 +152,7 @@ export function registerSend(program: Command): void {
       ) => {
         // Resolve session context once: tmux target, agent plugin, session data
         const {
+          config,
           tmuxTarget,
           runtimeName,
           agent,
@@ -184,6 +210,7 @@ export function registerSend(program: Command): void {
 
         if (existingSession && sessionManager) {
           await sessionManager.send(session, message);
+          markProgressCheckpointReset(config, existingSession);
           console.log(chalk.green("Message sent and processing"));
           return;
         }

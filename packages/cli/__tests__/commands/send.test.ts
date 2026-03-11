@@ -17,6 +17,11 @@ const { mockConfigRef, mockSessionManager } = vi.hoisted(() => ({
   },
 }));
 
+const { mockGetSessionsDir, mockUpdateMetadata } = vi.hoisted(() => ({
+  mockGetSessionsDir: vi.fn(() => "/tmp/sessions"),
+  mockUpdateMetadata: vi.fn(),
+}));
+
 vi.mock("../../src/lib/shell.js", () => ({
   tmux: mockTmux,
   exec: mockExec,
@@ -49,6 +54,8 @@ vi.mock("@syntese/core", () => ({
     }
     return mockConfigRef.current;
   },
+  getSessionsDir: mockGetSessionsDir,
+  updateMetadata: mockUpdateMetadata,
 }));
 
 vi.mock("../../src/lib/create-session-manager.js", () => ({
@@ -78,6 +85,8 @@ beforeEach(() => {
   mockDetectActivity.mockReset();
   mockSessionManager.get.mockReset();
   mockSessionManager.send.mockReset();
+  mockGetSessionsDir.mockClear();
+  mockUpdateMetadata.mockClear();
   mockConfigRef.current = null;
   mockExec.mockResolvedValue({ stdout: "", stderr: "" });
 });
@@ -321,6 +330,14 @@ describe("send command", () => {
       await program.parseAsync(["node", "test", "send", "app-1", "hello", "opencode"]);
 
       expect(mockSessionManager.send).toHaveBeenCalledWith("app-1", "hello opencode");
+      expect(mockGetSessionsDir).toHaveBeenCalledWith("/tmp/syntese.yaml", "/tmp/my-app");
+      expect(mockUpdateMetadata).toHaveBeenCalledWith(
+        "/tmp/sessions",
+        "app-1",
+        expect.objectContaining({
+          progressCheckpointResetAt: expect.any(String),
+        }),
+      );
       expect(mockExec).not.toHaveBeenCalledWith(
         "tmux",
         expect.arrayContaining(["send-keys", "-l", "hello opencode"]),
