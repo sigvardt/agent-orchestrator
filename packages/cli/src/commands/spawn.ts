@@ -2,7 +2,6 @@ import chalk from "chalk";
 import ora from "ora";
 import type { Command } from "commander";
 import {
-  loadConfig,
   decompose,
   getLeaves,
   getSiblings,
@@ -18,6 +17,7 @@ import { banner } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 import { ensureLifecycleWorker } from "../lib/lifecycle-service.js";
 import { preflight } from "../lib/preflight.js";
+import { loadCliConfig } from "../lib/config.js";
 
 interface SpawnClaimOptions {
   claimPr?: string;
@@ -151,7 +151,7 @@ export function registerSpawn(program: Command): void {
           maxDepth?: string;
         },
       ) => {
-        const config = loadConfig();
+        const config = loadCliConfig();
         if (!config.projects[projectId]) {
           console.error(
             chalk.red(
@@ -265,7 +265,7 @@ export function registerBatchSpawn(program: Command): void {
     .argument("<issues...>", "Issue identifiers")
     .option("--open", "Open sessions in terminal tabs")
     .action(async (projectId: string, issues: string[], opts: { open?: boolean }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       if (!config.projects[projectId]) {
         console.error(
           chalk.red(

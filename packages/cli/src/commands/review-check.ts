@@ -1,9 +1,9 @@
 import chalk from "chalk";
 import ora from "ora";
 import type { Command } from "commander";
-import { loadConfig } from "@syntese/core";
 import { gh } from "../lib/shell.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { loadCliConfig } from "../lib/config.js";
 
 interface ReviewInfo {
   sessionId: string;
@@ -68,7 +68,7 @@ export function registerReviewCheck(program: Command): void {
     .argument("[project]", "Project ID (checks all if omitted)")
     .option("--dry-run", "Show what would be done without sending messages")
     .action(async (projectId: string | undefined, opts: { dryRun?: boolean }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
 
       if (projectId && !config.projects[projectId]) {
         console.error(chalk.red(`Unknown project: ${projectId}`));

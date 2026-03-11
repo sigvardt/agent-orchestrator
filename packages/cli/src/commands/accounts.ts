@@ -3,7 +3,6 @@ import type { Command } from "commander";
 import {
   getAccountDataDir,
   getEffectiveAccounts,
-  loadConfig,
   type AccountConfig,
   type OrchestratorConfig,
   type Session,
@@ -12,6 +11,7 @@ import {
 import { banner, padCol } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 import { loginAccount, resolveSessionAccountId, testAccountAuth } from "../lib/accounts.js";
+import { loadCliConfig } from "../lib/config.js";
 
 const ACTIVE_SESSION_STATUSES = new Set(["working", "spawning", "ready", "idle"]);
 
@@ -109,7 +109,7 @@ async function getActiveSessionsByAccount(
 }
 
 async function listAccounts(opts: { json?: boolean } = {}): Promise<void> {
-  const config = loadConfig();
+        const config = loadCliConfig();
   const accounts = getEffectiveAccounts(config);
   const activeSessionsByAccount = await getActiveSessionsByAccount(config);
   const rows = await Promise.all(
@@ -150,7 +150,7 @@ async function listAccounts(opts: { json?: boolean } = {}): Promise<void> {
 }
 
 async function runAccountTest(accountId: string, opts: { json?: boolean } = {}): Promise<void> {
-  const config = loadConfig();
+        const config = loadCliConfig();
   const resolved = requireAccount(config, accountId);
   const auth = await testAccountAuth(resolved.accountId, resolved.account);
   const payload = {
@@ -186,7 +186,7 @@ async function runAccountTest(accountId: string, opts: { json?: boolean } = {}):
 }
 
 async function runAccountLogin(accountId: string): Promise<void> {
-  const config = loadConfig();
+        const config = loadCliConfig();
   const resolved = requireAccount(config, accountId);
 
   console.log(banner("ACCOUNT LOGIN"));
@@ -219,7 +219,7 @@ async function runAccountLogin(accountId: string): Promise<void> {
 }
 
 async function showAccountSessionStatus(opts: { json?: boolean } = {}): Promise<void> {
-  const config = loadConfig();
+        const config = loadCliConfig();
   const activeSessionsByAccount = await getActiveSessionsByAccount(config);
   const rows = [...activeSessionsByAccount.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
