@@ -91,8 +91,7 @@ function parseAccountCapacityState(value: unknown, accountId: string): AccountCa
   };
 
   return {
-    version:
-      typeof candidate.version === "number" ? candidate.version : CAPACITY_STATE_VERSION,
+    version: typeof candidate.version === "number" ? candidate.version : CAPACITY_STATE_VERSION,
     accountId: typeof candidate.accountId === "string" ? candidate.accountId : accountId,
     consumed: typeof candidate.consumed === "number" ? candidate.consumed : 0,
     windowStartedAt:
@@ -101,9 +100,7 @@ function parseAccountCapacityState(value: unknown, accountId: string): AccountCa
         : null,
     overageConsumed: typeof candidate.overageConsumed === "number" ? candidate.overageConsumed : 0,
     updatedAt:
-      typeof candidate.updatedAt === "string"
-        ? candidate.updatedAt
-        : new Date().toISOString(),
+      typeof candidate.updatedAt === "string" ? candidate.updatedAt : new Date().toISOString(),
     usageSnapshot: isUsageSnapshot(candidate.usageSnapshot) ? candidate.usageSnapshot : null,
   };
 }
@@ -159,10 +156,7 @@ function formatDuration(ms: number): string {
   return `${minutes}m`;
 }
 
-function computeWindowResetIn(
-  windowStartedAt: string | null,
-  windowHours: number,
-): string | null {
+function computeWindowResetIn(windowStartedAt: string | null, windowHours: number): string | null {
   if (!windowStartedAt) return null;
   const startMs = new Date(windowStartedAt).getTime();
   const windowMs = windowHours * 3600_000;
@@ -566,7 +560,93 @@ function routeForModel(
   return buildRoute(false, null, "Account has no remaining quota");
 }
 
-function scoreAccountForModel(capacity: AccountCapacity, modelFamily: AccountModelFamily): number {
+export interface AutoRouteResult {
+  accountId: string;
+  agent: string;
+  reason: string;
+}
+
+export interface AutoRouteRejection {
+  reason: string;
+  recoveryEstimates: Array<{ accountId: string; agent: string; resetIn: string | null }>;
+}
+
+interface AutoRouteRejectionDetail {
+  accountId: string;
+  agent: string;
+  status: AccountCapacityStatus;
+  resetIn: string | null;
+}
+
+export class AutoRouteNoCapacityError extends Error {
+  readonly rejection: AutoRouteRejection;
+  readonly details: AutoRouteRejectionDetail[];
+
+  constructor(rejection: AutoRouteRejection, details: AutoRouteRejectionDetail[]) {
+    super(formatAutoRouteRejectionMessage(rejection, details));
+    this.name = "AutoRouteNoCapacityError";
+    this.rejection = rejection;
+    this.details = details;
+  }
+}
+
+function formatAutoRouteRejectionMessage(
+  rejection: AutoRouteRejection,
+  details: AutoRouteRejectionDetail[],
+): string {
+  if (details.length === 0) {
+    return `No capacity available for routing\n\n  ${rejection.reason}`;
+  }
+
+  const accountWidth = Math.max(
+    "Account".length,
+    ...details.map((entry) => entry.accountId.length),
+  );
+  const agentWidth = Math.max("Agent".length, ...details.map((entry) => entry.agent.length));
+  const statusWidth = Math.max("Status".length, ...details.map((entry) => entry.status.length));
+  const resetWidth = Math.max(
+    "Resets In".length,
+    ...details.map((entry) => (entry.resetIn ?? "-").length),
+  );
+
+  const header = [
+    "  ",
+    "Account".padEnd(accountWidth),
+    "  ",
+    "Agent".padEnd(agentWidth),
+    "  ",
+    "Status".padEnd(statusWidth),
+    "  ",
+    "Resets In".padEnd(resetWidth),
+  ].join("");
+
+  const rows = details.map((entry) =>
+    [
+      "  ",
+      entry.accountId.padEnd(accountWidth),
+      "  ",
+      entry.agent.padEnd(agentWidth),
+      "  ",
+      entry.status.padEnd(statusWidth),
+      "  ",
+      (entry.resetIn ?? "-").padEnd(resetWidth),
+    ].join(""),
+  );
+
+  return [
+    "No capacity available for routing",
+    "",
+    header,
+    ...rows,
+    "",
+    "  Tip: Try again when quotas reset, or adjust routing.extraUsagePolicy to 'aggressive' to use overage budgets.",
+  ].join("\n");
+}
+
+export function scoreAccountForModel(
+  capacity: AccountCapacity,
+  modelFamily: AccountModelFamily,
+): number {
   const route = routeForModel(capacity, modelFamily);
   if (!route.available || route.preferredPool === null) {
     return Number.NEGATIVE_INFINITY;
@@ -600,6 +680,193 @@ function scoreAccountForModel(capacity: AccountCapacity, modelFamily: AccountMod
   }
 
   return poolBase - usagePenalty - capacity.activeSessions * 5;
+}
+
+function dedupeAgentOrder(seed: string[], allAgents: string[]): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+
+  for (const agent of [...seed, ...allAgents]) {
+    if (seen.has(agent)) {
+      continue;
+    }
+    seen.add(agent);
+    ordered.push(agent);
+  }
+
+  return ordered;
+}
+
+function getRoutingAgentOrder(
+  config: OrchestratorConfig,
+  allAgents: string[],
+  opts?: { taskType?: string; prefer?: string },
+): string[] {
+  const configuredTaskRouting = config.routing?.taskRouting ?? {};
+  const taskRoute =
+    opts?.taskType && configuredTaskRouting[opts.taskType]
+      ? configuredTaskRouting[opts.taskType]
+      : (configuredTaskRouting.default ?? allAgents);
+  const preferred = opts?.prefer ? [opts.prefer] : [];
+
+  return dedupeAgentOrder([...preferred, ...taskRoute], allAgents);
+}
+
+function canUseCapacity(capacity: AccountCapacity, allowOverage: boolean): boolean {
+  if (capacity.status === "available") {
+    return true;
+  }
+  if (!allowOverage) {
+    return false;
+  }
+  return capacity.status === "overage-only";
+}
+
+async function selectForAgent(
+  agentName: string,
+  activeSessionsByAccount: Map<string, number>,
+  effectiveAccounts: Record<string, AccountConfig>,
+  opts?: { model?: string; allowOverage?: boolean },
+): Promise<{ accountId: string; score: number } | null> {
+  const modelFamily = detectRequestedModelFamily(agentName, opts?.model ?? null);
+  const capacities: AccountCapacity[] = [];
+
+  for (const [accountId, accountConfig] of Object.entries(effectiveAccounts)) {
+    if (accountConfig.agent !== agentName) {
+      continue;
+    }
+
+    const state = await readCapacityState(accountId);
+    capacities.push(
+      computeAccountCapacity(
+        accountId,
+        accountConfig,
+        state,
+        activeSessionsByAccount.get(accountId) ?? 0,
+      ),
+    );
+  }
+
+  const scored = capacities
+    .filter((capacity) => canUseCapacity(capacity, opts?.allowOverage ?? false))
+    .map((capacity) => ({
+      accountId: capacity.accountId,
+      score: scoreAccountForModel(capacity, modelFamily),
+      baseRemaining: capacity.baseQuota.remaining,
+      overageRemaining: capacity.overage?.remaining ?? 0,
+    }))
+    .filter((candidate) => Number.isFinite(candidate.score))
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      if (b.baseRemaining !== a.baseRemaining) {
+        return b.baseRemaining - a.baseRemaining;
+      }
+      if (b.overageRemaining !== a.overageRemaining) {
+        return b.overageRemaining - a.overageRemaining;
+      }
+      return a.accountId.localeCompare(b.accountId);
+    });
+
+  return scored[0] ?? null;
+}
+
+export async function autoSelectAccount(
+  config: OrchestratorConfig,
+  sessions: Session[],
+  opts?: {
+    taskType?: string;
+    prefer?: string;
+    model?: string;
+  },
+): Promise<AutoRouteResult> {
+  const policy = config.routing?.extraUsagePolicy ?? "conservative";
+  const effectiveAccounts = getEffectiveAccounts(config);
+  const allAgents = Array.from(
+    new Set(Object.values(effectiveAccounts).map((account) => account.agent)),
+  );
+  const agentOrder = getRoutingAgentOrder(config, allAgents, {
+    taskType: opts?.taskType,
+    prefer: opts?.prefer,
+  });
+  const activeSessionsByAccount = getActiveSessionsByAccount(config, sessions);
+  const allowOverage = policy === "aggressive";
+
+  for (const agentName of agentOrder) {
+    const selection = await selectForAgent(agentName, activeSessionsByAccount, effectiveAccounts, {
+      model: opts?.model,
+      allowOverage,
+    });
+    if (selection) {
+      return {
+        accountId: selection.accountId,
+        agent: agentName,
+        reason:
+          policy === "aggressive"
+            ? `Selected ${selection.accountId} from ${agentName} using base-or-overage capacity`
+            : `Selected ${selection.accountId} from ${agentName} using base quota capacity`,
+      };
+    }
+  }
+
+  if (policy === "conservative") {
+    for (const agentName of agentOrder) {
+      const selection = await selectForAgent(
+        agentName,
+        activeSessionsByAccount,
+        effectiveAccounts,
+        {
+          model: opts?.model,
+          allowOverage: true,
+        },
+      );
+      if (selection) {
+        return {
+          accountId: selection.accountId,
+          agent: agentName,
+          reason: `Selected ${selection.accountId} from ${agentName} using fallback overage capacity`,
+        };
+      }
+    }
+  }
+
+  const details: AutoRouteRejectionDetail[] = [];
+  for (const [accountId, accountConfig] of Object.entries(effectiveAccounts)) {
+    const state = await readCapacityState(accountId);
+    const capacity = computeAccountCapacity(
+      accountId,
+      accountConfig,
+      state,
+      activeSessionsByAccount.get(accountId) ?? 0,
+    );
+    details.push({
+      accountId,
+      agent: accountConfig.agent,
+      status: capacity.status,
+      resetIn: capacity.baseQuota.windowResetIn,
+    });
+  }
+
+  details.sort((a, b) => {
+    const byAgent = a.agent.localeCompare(b.agent);
+    if (byAgent !== 0) return byAgent;
+    return a.accountId.localeCompare(b.accountId);
+  });
+
+  const rejection: AutoRouteRejection = {
+    reason:
+      policy === "never"
+        ? "No account has base quota remaining and overage is disabled by routing policy"
+        : "No account has remaining base quota or overage capacity",
+    recoveryEstimates: details.map((entry) => ({
+      accountId: entry.accountId,
+      agent: entry.agent,
+      resetIn: entry.resetIn,
+    })),
+  };
+
+  throw new AutoRouteNoCapacityError(rejection, details);
 }
 
 export async function selectAccountForProject(

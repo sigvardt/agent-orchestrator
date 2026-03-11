@@ -186,6 +186,10 @@ export interface SessionSpawnConfig {
   agent?: string;
   /** Select a specific configured account for this session. */
   account?: string;
+  /** Task type hint used by auto-routing mode (e.g. "frontend", "backend", "docs"). */
+  taskType?: string;
+  /** Soft agent preference used by auto-routing mode. */
+  prefer?: string;
   /** Override the OpenCode subagent for this session (e.g. "sisyphus", "oracle") */
   subagent?: string;
   /** Decomposition context — ancestor task chain (passed to prompt builder) */
@@ -1018,6 +1022,31 @@ export interface ShellEnvironmentPolicy {
   exclude: string[];
 }
 
+// =============================================================================
+// ROUTING
+// =============================================================================
+
+/** Routing mode determines how accounts are selected for spawned sessions. */
+export type RoutingMode = "orchestrator" | "auto";
+
+/** Policy for handling overage when all base quota is exhausted (auto mode only). */
+export type ExtraUsagePolicy = "conservative" | "aggressive" | "never";
+
+/** Per-task-type agent preference order. */
+export interface TaskRoutingConfig {
+  [taskType: string]: string[];
+}
+
+/** Top-level routing configuration. */
+export interface RoutingConfig {
+  /** Who picks the account: orchestrator (human) or auto (system). Default: orchestrator. */
+  mode: RoutingMode;
+  /** How to handle overage capacity in auto mode. Default: conservative. */
+  extraUsagePolicy: ExtraUsagePolicy;
+  /** Soft agent preferences per task type. Keys are task type names, values are agent name arrays. */
+  taskRouting: TaskRoutingConfig;
+}
+
 export interface ProjectRegistryEntry {
   configPath: string;
   addedAt: string;
@@ -1078,6 +1107,9 @@ export interface OrchestratorConfig {
 
   /** Runtime shell env filtering policy applied before session launch. */
   shellEnvironmentPolicy?: ShellEnvironmentPolicy;
+
+  /** Optional account routing policy. Defaults to orchestrator mode when omitted. */
+  routing?: RoutingConfig;
 }
 
 // =============================================================================

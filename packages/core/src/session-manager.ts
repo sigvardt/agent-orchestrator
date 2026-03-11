@@ -77,6 +77,7 @@ import {
   parsePauseUntil,
 } from "./global-pause.js";
 import {
+  autoSelectAccount,
   computeAccountCapacity,
   getActiveSessionsByAccount,
   incrementAccountConsumed,
@@ -1213,10 +1214,68 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       siblings: spawnConfig.siblings,
     });
 
+    let effectiveAgent = plugins.agent;
+    let effectiveAgentName = effectiveAgent.name;
+    const routingSessions = listAllSessions().flatMap(
+      ({ sessionName, projectId: sessionProjectId }) => {
+        const sessionProject = config.projects[sessionProjectId];
+        if (!sessionProject) {
+          return [] as Session[];
+        }
+
+        const raw = readMetadataRaw(getProjectSessionsDir(sessionProject), sessionName);
+        if (!raw) {
+          return [] as Session[];
+        }
+
+        return [metadataToSession(sessionName, raw)];
+      },
+    );
+
+    let accountId: string;
+    if (spawnConfig.account) {
+      accountId = spawnConfig.account;
+    } else if (config.routing?.mode === "auto") {
+      const autoResult = await autoSelectAccount(config, routingSessions, {
+        taskType: spawnConfig.taskType,
+        prefer: spawnConfig.prefer ?? effectiveAgentName,
+        model: project.agentConfig?.model,
+      });
+      accountId = autoResult.accountId;
+
+      if (autoResult.agent !== effectiveAgentName) {
+        const routedAgent = registry.get<Agent>("agent", autoResult.agent);
+        if (!routedAgent) {
+          throw new Error(`Agent plugin '${autoResult.agent}' not found`);
+        }
+        effectiveAgent = routedAgent;
+        effectiveAgentName = routedAgent.name;
+      }
+    } else {
+      accountId = await selectAccountForProject(
+        config,
+        spawnConfig.projectId,
+        registry,
+        routingSessions,
+        {
+          agent: effectiveAgentName,
+          model: project.agentConfig?.model,
+        },
+      ).catch(() =>
+        resolveAccountForProject(config, spawnConfig.projectId, { agent: effectiveAgentName }),
+      );
+    }
+
+    const resolvedAccount = resolveAccount(config, {
+      projectId: spawnConfig.projectId,
+      accountId,
+      agentName: effectiveAgentName,
+    });
+
     // Get agent launch config and create runtime — clean up workspace on failure
     const opencodeIssueSessionStrategy = project.opencodeIssueSessionStrategy ?? "reuse";
     const reusedOpenCodeSessionId =
-      plugins.agent.name === "opencode" && spawnConfig.issueId
+      effectiveAgentName === "opencode" && spawnConfig.issueId
         ? await resolveOpenCodeSessionReuse({
             sessionsDir,
             criteria: { issueId: spawnConfig.issueId },
@@ -1243,40 +1302,6 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       model: project.agentConfig?.model,
       subagent: spawnConfig.subagent ?? configuredSubagent,
     };
-
-    const selectedAgentName = plugins.agent.name;
-    const routingSessions = listAllSessions().flatMap(({ sessionName, projectId: sessionProjectId }) => {
-      const sessionProject = config.projects[sessionProjectId];
-      if (!sessionProject) {
-        return [] as Session[];
-      }
-
-      const raw = readMetadataRaw(getProjectSessionsDir(sessionProject), sessionName);
-      if (!raw) {
-        return [] as Session[];
-      }
-
-      return [metadataToSession(sessionName, raw)];
-    });
-
-    const accountId =
-      spawnConfig.account ??
-      (await selectAccountForProject(
-        config,
-        spawnConfig.projectId,
-        registry,
-        routingSessions,
-        {
-          agent: selectedAgentName,
-          model: project.agentConfig?.model,
-        },
-      ).catch(() => resolveAccountForProject(config, spawnConfig.projectId, { agent: selectedAgentName })));
-
-    const resolvedAccount = resolveAccount(config, {
-      projectId: spawnConfig.projectId,
-      accountId,
-      agentName: selectedAgentName,
-    });
 
     const activeSessionsByAccount = getActiveSessionsByAccount(config, routingSessions);
     const capacityState = await readCapacityState(resolvedAccount.accountId);
@@ -1309,8 +1334,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
 
     let handle: RuntimeHandle;
     try {
-      const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
-      const environment = plugins.agent.getEnvironment(agentLaunchConfig);
+      const launchCommand = effectiveAgent.getLaunchCommand(agentLaunchConfig);
+      const environment = effectiveAgent.getEnvironment(agentLaunchConfig);
       const excludeEnvironment = getExcludedEnvironment(config);
       logExcludedEnvironment("spawn", sessionId, excludeEnvironment);
 
@@ -1384,18 +1409,18 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         accountId: resolvedAccount.accountId,
         issue: spawnConfig.issueId,
         project: spawnConfig.projectId,
-        agent: selectedAgentName, // Persist agent name for lifecycle manager
+        agent: effectiveAgentName, // Persist agent name for lifecycle manager
         createdAt: new Date().toISOString(),
         runtimeHandle: JSON.stringify(handle),
         opencodeSessionId: reusedOpenCodeSessionId,
       });
 
-      if (plugins.agent.postLaunchSetup) {
-        await plugins.agent.postLaunchSetup(session);
+      if (effectiveAgent.postLaunchSetup) {
+        await effectiveAgent.postLaunchSetup(session);
       }
 
       if (
-        plugins.agent.name === "opencode" &&
+        effectiveAgentName === "opencode" &&
         opencodeIssueSessionStrategy === "reuse" &&
         !session.metadata["opencodeSessionId"]
       ) {
@@ -1442,7 +1467,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     // exits after -p, so we send the prompt after it starts in interactive mode).
     // This is intentionally outside the try/catch above — a prompt delivery failure
     // should NOT destroy the session. The agent is running; user can retry with `ao send`.
-    if (plugins.agent.promptDelivery === "post-launch" && agentLaunchConfig.prompt) {
+    if (effectiveAgent.promptDelivery === "post-launch" && agentLaunchConfig.prompt) {
       try {
         // Wait for agent to start and be ready for input
         await new Promise((resolve) => setTimeout(resolve, 5_000));

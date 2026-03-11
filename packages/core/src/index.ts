@@ -133,6 +133,8 @@ export {
   writeCapacityState,
   incrementAccountConsumed,
   calibrateAccountConsumed,
+  autoSelectAccount,
+  AutoRouteNoCapacityError,
   computeAccountCapacity,
   getActiveSessionsByAccount,
   persistAccountUsageSnapshot,
@@ -140,7 +142,11 @@ export {
   detectAccountModelFamily,
   selectAccountForProject,
 } from "./account-capacity.js";
-export type { AccountCapacityState } from "./account-capacity.js";
+export type {
+  AccountCapacityState,
+  AutoRouteResult,
+  AutoRouteRejection,
+} from "./account-capacity.js";
 
 // Feedback tools — contracts, validation, and report storage
 export {

@@ -54,6 +54,8 @@ async function spawnSession(
   openTab?: boolean,
   agent?: string,
   account?: string,
+  taskType?: string,
+  prefer?: string,
   claimOptions?: SpawnClaimOptions,
 ): Promise<string> {
   const spinner = ora("Creating session").start();
@@ -67,6 +69,8 @@ async function spawnSession(
       issueId,
       agent,
       account,
+      taskType,
+      prefer,
     });
 
     let branchStr = session.branch ?? "";
@@ -133,6 +137,8 @@ export function registerSpawn(program: Command): void {
       "--account <id>",
       "Route this session to a specific account ID (otherwise auto-select by capacity)",
     )
+    .option("--task-type <type>", "Task type hint for auto-routing (e.g. frontend, backend, docs)")
+    .option("--prefer <agent>", "Soft agent preference for auto-routing (e.g. codex, claude-code)")
     .option("--claim-pr <pr>", "Immediately claim an existing PR for the spawned session")
     .option("--assign-on-github", "Assign the claimed PR to the authenticated GitHub user")
     .option("--decompose", "Decompose issue into subtasks before spawning")
@@ -145,6 +151,8 @@ export function registerSpawn(program: Command): void {
           open?: boolean;
           agent?: string;
           account?: string;
+          taskType?: string;
+          prefer?: string;
           claimPr?: string;
           assignOnGithub?: boolean;
           decompose?: boolean;
@@ -210,6 +218,8 @@ export function registerSpawn(program: Command): void {
                 opts.open,
                 opts.agent,
                 opts.account,
+                opts.taskType,
+                opts.prefer,
                 claimOptions,
               );
             } else {
@@ -228,6 +238,8 @@ export function registerSpawn(program: Command): void {
                     siblings,
                     agent: opts.agent,
                     account: opts.account,
+                    taskType: opts.taskType,
+                    prefer: opts.prefer,
                   });
                   console.log(`  ${chalk.green("✓")} ${session.id} — ${leaf.description}`);
                 } catch (err) {
@@ -246,6 +258,8 @@ export function registerSpawn(program: Command): void {
               opts.open,
               opts.agent,
               opts.account,
+              opts.taskType,
+              opts.prefer,
               claimOptions,
             );
           }

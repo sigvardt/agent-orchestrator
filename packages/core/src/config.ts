@@ -38,8 +38,7 @@ const HOME_CONFIG_PATHS = [
   resolve(homedir(), ".config", "agent-orchestrator", "config.yaml"),
 ];
 
-const MISSING_CONFIG_ERROR =
-  `No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run \`${PRIMARY_CLI_COMMAND} init\` to create one.`;
+const MISSING_CONFIG_ERROR = `No syntese.yaml found (legacy agent-orchestrator.yaml is also supported). Run \`${PRIMARY_CLI_COMMAND} init\` to create one.`;
 
 const ACCOUNT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 const ENV_VAR_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -277,9 +276,7 @@ const AccountConfigSchema = z.object({
 });
 
 const ConfiguredAccountSchema = AccountConfigSchema.extend({
-  id: z
-    .string()
-    .regex(ACCOUNT_ID_PATTERN, "account id must match [a-zA-Z0-9][a-zA-Z0-9_-]*"),
+  id: z.string().regex(ACCOUNT_ID_PATTERN, "account id must match [a-zA-Z0-9][a-zA-Z0-9_-]*"),
 });
 
 const AgentPoolConfigSchema = z.object({
@@ -288,6 +285,14 @@ const AgentPoolConfigSchema = z.object({
 
 const ShellEnvironmentPolicySchema = z.object({
   exclude: z.array(z.string()).default([]),
+});
+
+const TaskRoutingSchema = z.record(z.array(z.string()));
+
+const RoutingConfigSchema = z.object({
+  mode: z.enum(["orchestrator", "auto"]).default("orchestrator"),
+  extraUsagePolicy: z.enum(["conservative", "aggressive", "never"]).default("conservative"),
+  taskRouting: TaskRoutingSchema.default({}),
 });
 
 const OrchestratorConfigSchema = z.object({
@@ -309,17 +314,19 @@ const OrchestratorConfigSchema = z.object({
   agentPool: AgentPoolConfigSchema.optional(),
   accounts: z.record(AccountConfigSchema).optional(),
   shellEnvironmentPolicy: ShellEnvironmentPolicySchema.optional(),
+  routing: RoutingConfigSchema.optional(),
 });
 
 function normalizeAccounts(config: OrchestratorConfig): OrchestratorConfig {
   const normalized: Record<string, NonNullable<OrchestratorConfig["accounts"]>[string]> = {};
   const configuredAccounts = config.agentPool?.accounts ?? [];
 
-  const register = (accountId: string, account: NonNullable<OrchestratorConfig["accounts"]>[string]): void => {
+  const register = (
+    accountId: string,
+    account: NonNullable<OrchestratorConfig["accounts"]>[string],
+  ): void => {
     if (!ACCOUNT_ID_PATTERN.test(accountId)) {
-      throw new Error(
-        `Invalid account ID '${accountId}': must match [a-zA-Z0-9][a-zA-Z0-9_-]*`,
-      );
+      throw new Error(`Invalid account ID '${accountId}': must match [a-zA-Z0-9][a-zA-Z0-9_-]*`);
     }
 
     if (normalized[accountId]) {
@@ -333,7 +340,9 @@ function normalizeAccounts(config: OrchestratorConfig): OrchestratorConfig {
     }
 
     const windowHours =
-      account.baseQuota?.windowHours ?? parseQuotaWindowHours(account.limits?.quotaWindow) ?? undefined;
+      account.baseQuota?.windowHours ??
+      parseQuotaWindowHours(account.limits?.quotaWindow) ??
+      undefined;
     const baseQuota = account.baseQuota
       ? {
           ...account.baseQuota,
