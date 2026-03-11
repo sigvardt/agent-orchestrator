@@ -280,7 +280,10 @@ describe("session ls", () => {
   });
 
   it("lists sessions with metadata", async () => {
-    writeFileSync(join(sessionsDir, "app-1"), "branch=feat/INT-100\nstatus=working\n");
+    writeFileSync(
+      join(sessionsDir, "app-1"),
+      "branch=feat/INT-100\nstatus=working\naccountId=codex-pro-1\n",
+    );
 
     mockTmux.mockImplementation(async (...args: string[]) => {
       if (args[0] === "list-sessions") return "app-1";
@@ -295,6 +298,7 @@ describe("session ls", () => {
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("app-1");
+    expect(output).toContain("[acct:codex-pro-1]");
     expect(output).toContain("feat/INT-100");
     expect(output).toContain("[working]");
   });

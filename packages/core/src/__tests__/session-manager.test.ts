@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createSessionManager } from "../session-manager.js";
@@ -13,7 +13,13 @@ import {
   reserveSessionId,
   updateMetadata,
 } from "../metadata.js";
-import { getSessionsDir, getProjectBaseDir, getWorktreesDir, getAccountDataDir } from "../paths.js";
+import {
+  getSessionsDir,
+  getProjectBaseDir,
+  getWorktreesDir,
+  getAccountDataDir,
+  getAccountCapacityFile,
+} from "../paths.js";
 import {
   SessionNotRestorableError,
   WorkspaceMissingError,
@@ -124,6 +130,57 @@ function installMockOpencodeWithNotFoundDelete(sessionListJson: string): string 
   );
   chmodSync(scriptPath, 0o755);
   return binDir;
+}
+
+function installMockAccountStatusCli(options?: {
+  codexStatusOutput?: string;
+  codexExitCode?: number;
+  claudeStatusJson?: string;
+  claudeExitCode?: number;
+}): string {
+  const mockBin = join(tmpDir, "mock-bin-account-auth");
+  mkdirSync(mockBin, { recursive: true });
+
+  const codexStatusOutput = options?.codexStatusOutput ?? "Logged in as test";
+  const codexExitCode = options?.codexExitCode ?? 0;
+  const claudeStatusJson = options?.claudeStatusJson ?? '{"loggedIn":true}';
+  const claudeExitCode = options?.claudeExitCode ?? 0;
+
+  const codexScript = join(mockBin, "codex");
+  writeFileSync(
+    codexScript,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      'if [[ "$1" == "login" && "$2" == "status" ]]; then',
+      `  printf '%s\\n' '${codexStatusOutput.replace(/'/g, "'\\''")}'`,
+      `  exit ${codexExitCode}`,
+      "fi",
+      "exit 1",
+      "",
+    ].join("\n"),
+    "utf-8",
+  );
+  chmodSync(codexScript, 0o755);
+
+  const claudeScript = join(mockBin, "claude");
+  writeFileSync(
+    claudeScript,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      'if [[ "$1" == "auth" && "$2" == "status" && "$3" == "--json" ]]; then',
+      `  printf '%s\\n' '${claudeStatusJson.replace(/'/g, "'\\''")}'`,
+      `  exit ${claudeExitCode}`,
+      "fi",
+      "exit 1",
+      "",
+    ].join("\n"),
+    "utf-8",
+  );
+  chmodSync(claudeScript, 0o755);
+
+  return mockBin;
 }
 
 function createRepoWithPushedFeatureCommit(
@@ -1033,7 +1090,6 @@ describe("spawn", () => {
   });
 
   it("sends prompt post-launch when agent.promptDelivery is 'post-launch'", async () => {
-    vi.useFakeTimers();
     const postLaunchAgent = {
       ...mockAgent,
       promptDelivery: "post-launch" as const,
@@ -1049,17 +1105,14 @@ describe("spawn", () => {
     };
 
     const sm = createSessionManager({ config, registry: registryWithPostLaunch });
-    const spawnPromise = sm.spawn({ projectId: "my-app", prompt: "Fix the bug" });
-    await vi.advanceTimersByTimeAsync(5_000);
-    await spawnPromise;
+    await sm.spawn({ projectId: "my-app", prompt: "Fix the bug" });
 
     // Prompt should be sent via runtime.sendMessage, not included in launch command
     expect(mockRuntime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ id: expect.any(String) }),
       expect.stringContaining("Fix the bug"),
     );
-    vi.useRealTimers();
-  });
+  }, 15_000);
 
   it("does not send prompt post-launch when agent.promptDelivery is not set", async () => {
     const sm = createSessionManager({ config, registry: mockRegistry });
@@ -1070,7 +1123,6 @@ describe("spawn", () => {
   });
 
   it("sends AO guidance post-launch even when no explicit prompt is provided", async () => {
-    vi.useFakeTimers();
     const postLaunchAgent = {
       ...mockAgent,
       promptDelivery: "post-launch" as const,
@@ -1086,19 +1138,15 @@ describe("spawn", () => {
     };
 
     const sm = createSessionManager({ config, registry: registryWithPostLaunch });
-    const spawnPromise = sm.spawn({ projectId: "my-app" });
-    await vi.advanceTimersByTimeAsync(5_000);
-    await spawnPromise;
+    await sm.spawn({ projectId: "my-app" });
 
     expect(mockRuntime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ id: expect.any(String) }),
       expect.stringContaining("syn session claim-pr"),
     );
-    vi.useRealTimers();
-  });
+  }, 15_000);
 
   it("does not destroy session when post-launch prompt delivery fails", async () => {
-    vi.useFakeTimers();
     const failingRuntime: Runtime = {
       ...mockRuntime,
       sendMessage: vi.fn().mockRejectedValue(new Error("tmux send failed")),
@@ -1118,20 +1166,16 @@ describe("spawn", () => {
     };
 
     const sm = createSessionManager({ config, registry: registryWithFailingSend });
-    const spawnPromise = sm.spawn({ projectId: "my-app", prompt: "Fix the bug" });
-    await vi.advanceTimersByTimeAsync(5_000);
-    const session = await spawnPromise;
+    const session = await sm.spawn({ projectId: "my-app", prompt: "Fix the bug" });
 
     // Session should still be returned successfully despite sendMessage failure
     expect(session.id).toBe("app-1");
     expect(session.status).toBe("spawning");
     // Runtime should NOT have been destroyed
     expect(failingRuntime.destroy).not.toHaveBeenCalled();
-    vi.useRealTimers();
-  });
+  }, 15_000);
 
   it("waits before sending post-launch prompt", async () => {
-    vi.useFakeTimers();
     const postLaunchAgent = {
       ...mockAgent,
       promptDelivery: "post-launch" as const,
@@ -1149,16 +1193,13 @@ describe("spawn", () => {
     const sm = createSessionManager({ config, registry: registryWithPostLaunch });
     const spawnPromise = sm.spawn({ projectId: "my-app", prompt: "Fix the bug" });
 
-    // Advance only 4s — not enough, message should not have been sent yet
-    await vi.advanceTimersByTimeAsync(4_000);
+    await new Promise((resolve) => setTimeout(resolve, 4_000));
     expect(mockRuntime.sendMessage).not.toHaveBeenCalled();
 
-    // Advance the remaining 1s — now it should fire
-    await vi.advanceTimersByTimeAsync(1_000);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
     await spawnPromise;
     expect(mockRuntime.sendMessage).toHaveBeenCalled();
-    vi.useRealTimers();
-  });
+  }, 15_000);
 });
 
 describe("list", () => {
@@ -3318,6 +3359,9 @@ describe("spawnOrchestrator", () => {
   });
 
   it("injects the selected account environment and persists account metadata", async () => {
+    const mockBin = installMockAccountStatusCli();
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
     const codexAgent: Agent = {
       ...mockAgent,
       name: "codex",
@@ -3338,6 +3382,8 @@ describe("spawnOrchestrator", () => {
       },
     };
 
+    mkdirSync(getAccountDataDir("codex-pro-1"), { recursive: true });
+
     const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
     await sm.spawn({ projectId: "my-app", account: "codex-pro-1" });
 
@@ -3350,6 +3396,9 @@ describe("spawnOrchestrator", () => {
   });
 
   it("uses the same auth dir for shared accounts and different dirs for distinct accounts", async () => {
+    const mockBin = installMockAccountStatusCli();
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
     const codexAgent: Agent = {
       ...mockAgent,
       name: "codex",
@@ -3379,6 +3428,9 @@ describe("spawnOrchestrator", () => {
       },
     };
 
+    mkdirSync(getAccountDataDir("codex-pro-1"), { recursive: true });
+    mkdirSync(getAccountDataDir("codex-pro-2"), { recursive: true });
+
     const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
     await sm.spawn({ projectId: "my-app", account: "codex-pro-1" });
     await sm.spawn({ projectId: "my-app", account: "codex-pro-1" });
@@ -3392,6 +3444,186 @@ describe("spawnOrchestrator", () => {
     expect(secondEnv["CODEX_HOME"]).toBe(getAccountDataDir("codex-pro-1"));
     expect(thirdEnv["CODEX_HOME"]).toBe(getAccountDataDir("codex-pro-2"));
     expect(firstEnv["CODEX_HOME"]).not.toBe(thirdEnv["CODEX_HOME"]);
+  });
+
+  it("blocks spawn when selected account is fully exhausted", async () => {
+    const mockBin = installMockAccountStatusCli();
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
+    const codexAgent: Agent = {
+      ...mockAgent,
+      name: "codex",
+    };
+    const registryWithCodex: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return codexAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+    const configWithAccounts: OrchestratorConfig = {
+      ...config,
+      defaults: { ...config.defaults, agent: "codex" },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          agent: "codex",
+        },
+      },
+      accounts: {
+        "codex-pro-1": {
+          agent: "codex",
+          baseQuota: { estimatedTotal: 1, windowHours: 5 },
+          overage: { enabled: false, type: "credits", spendCap: 0 },
+        },
+      },
+    };
+
+    const accountDir = getAccountDataDir("codex-pro-1");
+    mkdirSync(accountDir, { recursive: true });
+    const capacityFile = getAccountCapacityFile("codex-pro-1");
+    mkdirSync(dirname(capacityFile), { recursive: true });
+    writeFileSync(
+      capacityFile,
+      JSON.stringify(
+        {
+          version: 2,
+          accountId: "codex-pro-1",
+          consumed: 1,
+          windowStartedAt: new Date().toISOString(),
+          overageConsumed: 0,
+          updatedAt: new Date().toISOString(),
+          usageSnapshot: null,
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
+
+    await expect(sm.spawn({ projectId: "my-app", account: "codex-pro-1" })).rejects.toThrow(
+      "Account codex-pro-1 has no capacity (0% base quota, overage disabled)",
+    );
+    expect(mockRuntime.create).not.toHaveBeenCalled();
+  });
+
+  it("warns and continues spawn when selected account is overage-only", async () => {
+    const mockBin = installMockAccountStatusCli();
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const codexAgent: Agent = {
+      ...mockAgent,
+      name: "codex",
+    };
+    const registryWithCodex: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return codexAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+    const configWithAccounts: OrchestratorConfig = {
+      ...config,
+      defaults: { ...config.defaults, agent: "codex" },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          agent: "codex",
+        },
+      },
+      accounts: {
+        "codex-pro-1": {
+          agent: "codex",
+          baseQuota: { estimatedTotal: 1, windowHours: 5 },
+          overage: { enabled: true, type: "credits", spendCap: 10 },
+        },
+      },
+    };
+
+    const accountDir = getAccountDataDir("codex-pro-1");
+    mkdirSync(accountDir, { recursive: true });
+    const capacityFile = getAccountCapacityFile("codex-pro-1");
+    mkdirSync(dirname(capacityFile), { recursive: true });
+    writeFileSync(
+      capacityFile,
+      JSON.stringify(
+        {
+          version: 2,
+          accountId: "codex-pro-1",
+          consumed: 1,
+          windowStartedAt: new Date().toISOString(),
+          overageConsumed: 0,
+          updatedAt: new Date().toISOString(),
+          usageSnapshot: null,
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
+    await expect(sm.spawn({ projectId: "my-app", account: "codex-pro-1" })).resolves.toBeDefined();
+
+    expect(mockRuntime.create).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith("⚠ Using overage budget for account codex-pro-1");
+  });
+
+  it("blocks spawn when selected account auth is invalid", async () => {
+    const mockBin = installMockAccountStatusCli({
+      codexStatusOutput: "Not logged in",
+      codexExitCode: 1,
+    });
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
+    const codexAgent: Agent = {
+      ...mockAgent,
+      name: "codex",
+    };
+    const registryWithCodex: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return codexAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+    const configWithAccounts: OrchestratorConfig = {
+      ...config,
+      defaults: { ...config.defaults, agent: "codex" },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          agent: "codex",
+        },
+      },
+      accounts: {
+        "codex-pro-1": {
+          agent: "codex",
+          baseQuota: { estimatedTotal: 100, windowHours: 5 },
+        },
+      },
+    };
+
+    const accountDir = getAccountDataDir("codex-pro-1");
+    mkdirSync(accountDir, { recursive: true });
+
+    const sm = createSessionManager({ config: configWithAccounts, registry: registryWithCodex });
+    await expect(sm.spawn({ projectId: "my-app", account: "codex-pro-1" })).rejects.toThrow(
+      "Account codex-pro-1 auth is invalid or expired. Run `syn accounts login codex-pro-1` to fix.",
+    );
+    expect(mockRuntime.create).not.toHaveBeenCalled();
   });
 
   it("does not persist orchestratorSessionReused metadata on newly created sessions", async () => {

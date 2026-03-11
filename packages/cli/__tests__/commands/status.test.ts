@@ -353,7 +353,7 @@ describe("status command", () => {
   });
 
   it("shows table header with column names", async () => {
-    writeFileSync(join(sessionsDir, "app-1"), "branch=main\nstatus=idle\n");
+    writeFileSync(join(sessionsDir, "app-1"), "branch=main\nstatus=idle\naccountId=codex-pro-1\n");
 
     mockTmux.mockImplementation(async (...args: string[]) => {
       if (args[0] === "list-sessions") return "app-1";
@@ -366,6 +366,7 @@ describe("status command", () => {
 
     const output = consoleSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("Session");
+    expect(output).toContain("Account");
     expect(output).toContain("Branch");
     expect(output).toContain("PR");
     expect(output).toContain("CI");
@@ -486,7 +487,7 @@ describe("status command", () => {
   it("outputs JSON with enriched fields", async () => {
     writeFileSync(
       join(sessionsDir, "app-1"),
-      "worktree=/tmp/wt\nbranch=feat/json\nstatus=working\n",
+      "worktree=/tmp/wt\nbranch=feat/json\nstatus=working\naccountId=codex-pro-1\n",
     );
 
     mockTmux.mockImplementation(async (...args: string[]) => {
@@ -519,6 +520,26 @@ describe("status command", () => {
     expect(parsed[0].ciStatus).toBe("passing");
     expect(parsed[0].reviewDecision).toBe("pending");
     expect(parsed[0].pendingThreads).toBe(0);
+    expect(parsed[0].accountId).toBe("codex-pro-1");
+  });
+
+  it("shows account value in table rows", async () => {
+    writeFileSync(
+      join(sessionsDir, "app-1"),
+      "worktree=/tmp/wt\nbranch=feat/account\nstatus=working\naccountId=claude-max-1\n",
+    );
+
+    mockTmux.mockImplementation(async (...args: string[]) => {
+      if (args[0] === "list-sessions") return "app-1";
+      if (args[0] === "display-message") return null;
+      return null;
+    });
+    mockGit.mockResolvedValue("feat/account");
+
+    await program.parseAsync(["node", "test", "status"]);
+
+    const output = consoleSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("claude-max-1");
   });
 
   it("falls back to PR number from metadata URL when SCM fails", async () => {
