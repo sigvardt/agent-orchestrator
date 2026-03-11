@@ -35,6 +35,7 @@ import {
   type ProjectConfig,
   type SessionKillOptions,
   type SessionKillStepResult,
+  type AccountConfig,
   type Runtime,
   type Agent,
   type Workspace,
@@ -164,13 +165,20 @@ async function runAccountStatusCommand(
 }
 
 /** Check whether account auth is currently valid for spawn-time routing. */
-async function isAccountAuthValid(accountId: string, account: { agent: string }): Promise<boolean> {
+async function isAccountAuthValid(accountId: string, account: AccountConfig): Promise<boolean> {
   const command = getAccountStatusCommand(account);
   if (!command) {
     return true;
   }
 
-  if (!existsSync(getAccountDataDir(accountId))) {
+  // Implicit accounts (auto-resolved by agent name, no explicit auth config)
+  // use the system-wide default auth — skip validation.
+  const hasAccountDataDir = existsSync(getAccountDataDir(accountId));
+  if (!account.auth && !hasAccountDataDir) {
+    return true;
+  }
+
+  if (!hasAccountDataDir) {
     return false;
   }
 
