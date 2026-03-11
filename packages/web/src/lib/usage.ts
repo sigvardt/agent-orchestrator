@@ -19,6 +19,7 @@ import type {
   SessionUsageResponse,
 } from "@/lib/types";
 import { resolveProject } from "@/lib/serialize";
+import { recordUsageSnapshots, tryBuildEstimatedSnapshot } from "@/lib/usage-history";
 
 interface UsageDialTemplate {
   id: string;
@@ -397,30 +398,46 @@ export async function getDashboardUsage(
   const sessionUsage = await Promise.all(
     workerSessions.map((session) => loadSessionUsageSource(session, config, registry)),
   );
+
+  // Persist live snapshots to cache and record them in the usage history.
   await persistLiveUsageCaches(config, sessionUsage);
+  const liveSnapshots = sessionUsage
+    .map((entry) => entry.snapshot)
+    .filter((s): s is UsageSnapshot => s !== null);
+  void recordUsageSnapshots(liveSnapshots).catch(() => undefined);
+
   const cachedSnapshots = await loadCachedUsageSnapshots(config);
 
-  const mergedSnapshots = PROVIDER_ORDER.map((provider) => {
-    const providerSnapshots = sessionUsage
-      .filter((entry): entry is SessionUsageSource & { provider: UsageProvider } => {
-        return entry.provider === provider;
-      })
-      .map((entry) => entry.snapshot)
-      .filter((snapshot): snapshot is UsageSnapshot => snapshot !== null);
+  const mergedSnapshots = await Promise.all(
+    PROVIDER_ORDER.map(async (provider) => {
+      const providerSnapshots = sessionUsage
+        .filter((entry): entry is SessionUsageSource & { provider: UsageProvider } => {
+          return entry.provider === provider;
+        })
+        .map((entry) => entry.snapshot)
+        .filter((snapshot): snapshot is UsageSnapshot => snapshot !== null);
 
-    const liveSnapshot = mergeSnapshots(provider, providerSnapshots);
-    if (liveSnapshot) {
-      return normalizeDashboardSnapshot(provider, liveSnapshot, "live");
-    }
+      const liveSnapshot = mergeSnapshots(provider, providerSnapshots);
+      if (liveSnapshot) {
+        return normalizeDashboardSnapshot(provider, liveSnapshot, "live");
+      }
 
-    const cachedProviderSnapshots = cachedSnapshots.get(provider) ?? [];
-    const cachedSnapshot = mergeSnapshots(provider, cachedProviderSnapshots);
-    if (cachedSnapshot) {
-      return normalizeDashboardSnapshot(provider, cachedSnapshot, "cached");
-    }
+      const cachedProviderSnapshots = cachedSnapshots.get(provider) ?? [];
+      const cachedSnapshot = mergeSnapshots(provider, cachedProviderSnapshots);
+      if (cachedSnapshot) {
+        // Attempt to upgrade cached snapshot to an estimated one.
+        const estimatedSnapshot = await tryBuildEstimatedSnapshot(cachedSnapshot).catch(
+          () => null,
+        );
+        if (estimatedSnapshot) {
+          return normalizeDashboardSnapshot(provider, estimatedSnapshot, "estimated");
+        }
+        return normalizeDashboardSnapshot(provider, cachedSnapshot, "cached");
+      }
 
-    return normalizeDashboardSnapshot(provider, null, "empty");
-  });
+      return normalizeDashboardSnapshot(provider, null, "empty");
+    }),
+  );
 
   return {
     updatedAt: new Date().toISOString(),

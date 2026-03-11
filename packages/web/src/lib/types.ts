@@ -145,7 +145,7 @@ export interface DashboardUsageResponse {
   snapshots: DashboardUsageSnapshot[];
 }
 
-export type DashboardUsageSource = "live" | "cached" | "empty";
+export type DashboardUsageSource = "live" | "cached" | "estimated" | "empty";
 
 export interface DashboardUsageSnapshot {
   provider: UsageProvider;

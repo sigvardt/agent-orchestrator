@@ -93,6 +93,8 @@ function getSnapshotStatusLabel(source: DashboardUsageSource): string {
       return "Live";
     case "cached":
       return "Cached snapshot";
+    case "estimated":
+      return "Estimated";
     case "empty":
       return "Awaiting first snapshot";
   }
@@ -160,18 +162,22 @@ function CircularUsageDial({
   const helperText =
     source === "empty"
       ? "Starts tracking on first session"
-      : dial.status === "unavailable"
-        ? source === "cached"
-          ? (formatRelativeUpdate(capturedAt) ?? "Snapshot unavailable")
-          : "Live data unavailable"
-        : (resetLabel ??
-          (source === "cached"
-            ? dial.kind === "absolute"
-              ? "Last known balance"
-              : "Last known usage"
-            : dial.kind === "absolute"
-              ? "Live balance"
-              : "Live usage"));
+      : dial.isEstimated
+        ? dial.estimationConfidence !== undefined
+          ? `Estimated · ${Math.round(dial.estimationConfidence * 100)}% confidence`
+          : "Estimated"
+        : dial.status === "unavailable"
+          ? source === "cached"
+            ? (formatRelativeUpdate(capturedAt) ?? "Snapshot unavailable")
+            : "Live data unavailable"
+          : (resetLabel ??
+            (source === "cached"
+              ? dial.kind === "absolute"
+                ? "Last known balance"
+                : "Last known usage"
+              : dial.kind === "absolute"
+                ? "Live balance"
+                : "Live usage"));
 
   return (
     <div
@@ -207,16 +213,20 @@ function CircularUsageDial({
                   ? isEmptyState
                     ? `color-mix(in srgb, ${accent} 36%, rgba(255,255,255,0.14))`
                     : "rgba(125,133,144,0.35)"
-                  : accent
+                  : dial.isEstimated
+                    ? `color-mix(in srgb, ${accent} 65%, transparent)`
+                    : accent
               }
               strokeWidth={strokeWidth}
-              strokeLinecap="round"
+              strokeLinecap={dial.isEstimated ? "butt" : "round"}
               strokeDasharray={
                 dial.status === "unavailable"
                   ? isEmptyState
                     ? circumference
                     : `${circumference / 18} ${circumference / 22}`
-                  : circumference
+                  : dial.isEstimated
+                    ? `${circumference / 12} ${circumference / 20}`
+                    : circumference
               }
               strokeDashoffset={dashOffset}
               style={{
@@ -226,6 +236,8 @@ function CircularUsageDial({
                     ? isEmptyState
                       ? `drop-shadow(0 0 10px color-mix(in srgb, ${accent} 18%, transparent))`
                       : "none"
+                    : dial.isEstimated
+                      ? "none"
                     : `drop-shadow(0 0 12px color-mix(in srgb, ${accent} 32%, transparent))`,
               }}
             />
@@ -277,7 +289,7 @@ function UsageProviderSection({
 }) {
   const meta = PROVIDER_META[snapshot.provider];
   const updateLabel =
-    source === "cached"
+    source === "cached" || source === "estimated"
       ? formatRelativeUpdate(snapshot.capturedAt)
       : source === "empty"
         ? "Start a session to see usage."
@@ -321,7 +333,9 @@ function UsageProviderSection({
                     ? "border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]"
                     : source === "cached"
                       ? "border-[rgba(255,184,108,0.35)] text-[rgb(255,200,132)]"
-                      : "border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]",
+                      : source === "estimated"
+                        ? "border-[rgba(163,113,247,0.35)] text-[rgb(200,170,255)]"
+                        : "border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]",
                 )}
               >
                 {getSnapshotStatusLabel(source)}
