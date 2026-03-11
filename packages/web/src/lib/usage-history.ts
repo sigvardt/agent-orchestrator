@@ -11,7 +11,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import type { UsageDial, UsageProvider, UsageSnapshot } from "@composio/ao-core";
+import type { UsageDial, UsageProvider, UsageSnapshot } from "@syntese/core";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
