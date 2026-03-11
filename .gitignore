@@ -63,6 +63,5 @@ agent-orchestrator.yaml
 
 # Agent configuration and tracking (personal, not for repo)
 CLAUDE.md
-AGENTS.md
 .claude/
 .opencode/
