@@ -45,11 +45,11 @@ describe("notifier-openclaw integration", () => {
     expect(url).toBe("http://127.0.0.1:18789/hooks/agent");
 
     const body = JSON.parse(opts.body);
-    expect(body.name).toBe("AO");
+    expect(body.name).toBe("Syntese");
     expect(body.sessionKey).toBe("hook:ao:ao-12");
     expect(body.wakeMode).toBe("now");
     expect(body.deliver).toBe(true);
-    expect(body.message).toContain("[AO URGENT]");
+    expect(body.message).toContain("[SYNTESE URGENT]");
     expect(body.message).toContain("CI failed 5 times");
   });
 
@@ -73,7 +73,7 @@ describe("notifier-openclaw integration", () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.sessionKey).toBe("hook:ao:ao-5");
-    expect(body.message).toContain("[AO ACTION] ao-5 ci.failing");
+    expect(body.message).toContain("[SYNTESE ACTION] ao-5 ci.failing");
     expect(body.message).toContain('Context: {"checkName":"lint"}');
     expect(body.message).toContain("Actions available: retry, kill");
   });

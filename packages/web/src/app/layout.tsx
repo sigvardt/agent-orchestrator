@@ -19,7 +19,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export async function generateMetadata(): Promise<Metadata> {
   const projectName = getProjectName();
-  const defaultTitle = projectName === "Syntese" ? projectName : `Syntese | ${projectName}`;
+  const defaultTitle =
+    projectName === "Syntese" ? "Syntese" : `Syntese | ${projectName}`;
   return {
     title: {
       template: `%s | ${projectName}`,

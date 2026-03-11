@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Syntese",
-    "slug": "ao-mobile",
+    "slug": "syntese-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.composio.ao-mobile",
+      "bundleIdentifier": "com.composio.syntese.mobile",
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch",
@@ -30,7 +30,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0d1117"
       },
-      "package": "com.composio.aomobile",
+      "package": "com.composio.syntese.mobile",
       "usesCleartextTraffic": true
     },
     "web": {
@@ -42,7 +42,7 @@
         "expo-notifications",
         {
           "color": "#f85149",
-          "defaultChannel": "ao-respond"
+          "defaultChannel": "syntese-respond"
         }
       ]
     ],

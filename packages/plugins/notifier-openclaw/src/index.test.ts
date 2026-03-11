@@ -104,6 +104,18 @@ describe("notifier-openclaw", () => {
     expect(body.message).toContain("Actions available: retry, kill");
   });
 
+  it("uses Syntese branding in the default headline and sender", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const notifier = create({ token: "tok" });
+    await notifier.notify(makeEvent());
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.name).toBe("Syntese");
+    expect(body.message).toContain("[SYNTESE URGENT]");
+  });
+
   it("post uses context sessionId when provided", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);

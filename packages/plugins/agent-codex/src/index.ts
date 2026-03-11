@@ -270,7 +270,7 @@ exit \$exit_code
 const AO_AGENTS_MD_SECTION = `
 ## Syntese (ao) Session
 
-You are running inside an Syntese managed workspace.
+You are running inside a Syntese managed workspace.
 Session metadata is updated automatically via shell wrappers.
 
 If automatic updates fail, you can manually update metadata:

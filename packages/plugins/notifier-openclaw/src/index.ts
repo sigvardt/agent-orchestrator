@@ -88,7 +88,7 @@ function eventHeadline(event: OrchestratorEvent): string {
     warning: "WARNING",
     info: "INFO",
   };
-  return `[AO ${priorityTag[event.priority]}] ${event.sessionId} ${event.type}`;
+  return `[SYNTESE ${priorityTag[event.priority]}] ${event.sessionId} ${event.type}`;
 }
 
 function stringifyData(data: Record<string, unknown>): string {
@@ -115,7 +115,7 @@ export function create(config?: Record<string, unknown>): Notifier {
   const token =
     (typeof config?.token === "string" ? config.token : undefined) ??
     process.env.OPENCLAW_HOOKS_TOKEN;
-  const senderName = typeof config?.name === "string" ? config.name : "AO";
+  const senderName = typeof config?.name === "string" ? config.name : "Syntese";
   const sessionKeyPrefix =
     typeof config?.sessionKeyPrefix === "string" ? config.sessionKeyPrefix : "hook:ao:";
   const wakeMode: WakeMode = config?.wakeMode === "next-heartbeat" ? "next-heartbeat" : "now";

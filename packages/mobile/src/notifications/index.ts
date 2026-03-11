@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import type { DashboardSession } from "../types";
 
-const ANDROID_CHANNEL_ID = "ao-respond";
+const ANDROID_CHANNEL_ID = "syntese-respond";
 
 /** Configure how notifications are presented when the app is in foreground */
 Notifications.setNotificationHandler({

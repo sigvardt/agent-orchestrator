@@ -240,6 +240,7 @@ describe("Session Prefix Generation", () => {
       expect(generateSessionPrefix("integrator")).toBe("int");
       expect(generateSessionPrefix("backend")).toBe("bac");
       expect(generateSessionPrefix("frontend")).toBe("fro");
+      expect(generateSessionPrefix("syntese")).toBe("syn");
     });
   });
 

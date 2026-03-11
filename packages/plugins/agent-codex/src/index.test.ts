@@ -1831,7 +1831,9 @@ describe("setupWorkspaceHooks", () => {
         return Promise.resolve("0.1.1");
       }
       if (typeof path === "string" && path.endsWith("AGENTS.md")) {
-        return Promise.resolve("# Existing\n\n## Syntese (ao) Session\n\nAlready here.\n");
+        return Promise.resolve(
+          "# Existing\n\n## Syntese (ao) Session\n\nAlready here.\n",
+        );
       }
       return Promise.reject(new Error("ENOENT"));
     });
