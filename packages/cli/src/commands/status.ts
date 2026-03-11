@@ -28,6 +28,7 @@ import { getSessionManager } from "../lib/create-session-manager.js";
 
 interface SessionInfo {
   name: string;
+  accountId: string | null;
   branch: string | null;
   status: string | null;
   summary: string | null;
@@ -118,6 +119,7 @@ async function gatherSessionInfo(
 
   return {
     name: session.id,
+    accountId: session.metadata["accountId"] ?? null,
     branch,
     status,
     summary,
@@ -137,6 +139,7 @@ async function gatherSessionInfo(
 // Column widths for the table
 const COL = {
   session: 14,
+  account: 16,
   branch: 24,
   pr: 6,
   ci: 6,
@@ -149,6 +152,7 @@ const COL = {
 function printTableHeader(): void {
   const hdr =
     padCol("Session", COL.session) +
+    padCol("Account", COL.account) +
     padCol("Branch", COL.branch) +
     padCol("PR", COL.pr) +
     padCol("CI", COL.ci) +
@@ -158,7 +162,15 @@ function printTableHeader(): void {
     "Age";
   console.log(chalk.dim(`  ${hdr}`));
   const totalWidth =
-    COL.session + COL.branch + COL.pr + COL.ci + COL.review + COL.threads + COL.activity + 3;
+    COL.session +
+    COL.account +
+    COL.branch +
+    COL.pr +
+    COL.ci +
+    COL.review +
+    COL.threads +
+    COL.activity +
+    3;
   console.log(chalk.dim(`  ${"─".repeat(totalWidth)}`));
 }
 
@@ -167,6 +179,7 @@ function printSessionRow(info: SessionInfo): void {
 
   const row =
     padCol(chalk.green(info.name), COL.session) +
+    padCol(info.accountId ? chalk.dim(info.accountId) : chalk.dim("-"), COL.account) +
     padCol(info.branch ? chalk.cyan(info.branch) : chalk.dim("-"), COL.branch) +
     padCol(info.prNumber ? chalk.blue(prStr) : chalk.dim(prStr), COL.pr) +
     padCol(ciStatusIcon(info.ciStatus), COL.ci) +

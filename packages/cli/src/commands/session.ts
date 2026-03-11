@@ -83,6 +83,8 @@ export function registerSession(program: Command): void {
           const age = activityTs ? formatAge(activityTs) : "-";
 
           const parts = [chalk.green(s.id), chalk.dim(`(${age})`)];
+          const accountId = s.metadata["accountId"];
+          if (accountId) parts.push(chalk.dim(`[acct:${accountId}]`));
           if (branchStr) parts.push(chalk.cyan(branchStr));
           if (s.status) parts.push(chalk.dim(`[${s.status}]`));
           const prUrl = s.metadata["pr"];

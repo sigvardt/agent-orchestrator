@@ -61,13 +61,14 @@ import {
   getSessionsDir,
   getWorktreesDir,
   getProjectBaseDir,
+  getAccountDataDir,
   generateTmuxName,
   generateConfigHash,
   validateAndStoreOrigin,
 } from "./paths.js";
 import { asValidOpenCodeSessionId } from "./opencode-session-id.js";
 import { normalizeOrchestratorSessionStrategy } from "./orchestrator-session-strategy.js";
-import { getAccountEnvironment, resolveAccount } from "./accounts.js";
+import { getAccountEnvironment, getAccountStatusCommand, resolveAccount } from "./accounts.js";
 import {
   GLOBAL_PAUSE_REASON_KEY,
   GLOBAL_PAUSE_SOURCE_KEY,
@@ -75,7 +76,10 @@ import {
   parsePauseUntil,
 } from "./global-pause.js";
 import {
+  computeAccountCapacity,
+  getActiveSessionsByAccount,
   incrementAccountConsumed,
+  readCapacityState,
   resolveAccountForProject,
   selectAccountForProject,
 } from "./account-capacity.js";
@@ -112,6 +116,91 @@ function getExitCode(err: unknown): number | null {
 
 function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+interface ExecCommandResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+function readExecOutput(err: unknown, key: "stdout" | "stderr"): string {
+  if (typeof err !== "object" || err === null) {
+    return "";
+  }
+  const value = (err as Record<string, unknown>)[key];
+  if (typeof value === "string") {
+    return value.trimEnd();
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString("utf-8").trimEnd();
+  }
+  return "";
+}
+
+/** Execute an account status command and capture structured output. */
+async function runAccountStatusCommand(
+  command: string,
+  args: string[],
+  env: Record<string, string>,
+): Promise<ExecCommandResult> {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      env: { ...process.env, ...env },
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return {
+      exitCode: 0,
+      stdout: String(stdout).trimEnd(),
+      stderr: String(stderr).trimEnd(),
+    };
+  } catch (err) {
+    return {
+      exitCode: getExitCode(err) ?? 1,
+      stdout: readExecOutput(err, "stdout"),
+      stderr: readExecOutput(err, "stderr") || formatError(err),
+    };
+  }
+}
+
+/** Check whether account auth is currently valid for spawn-time routing. */
+async function isAccountAuthValid(accountId: string, account: { agent: string }): Promise<boolean> {
+  const command = getAccountStatusCommand(account);
+  if (!command) {
+    return true;
+  }
+
+  if (!existsSync(getAccountDataDir(accountId))) {
+    return false;
+  }
+
+  const result = await runAccountStatusCommand(
+    command.command,
+    command.args,
+    getAccountEnvironment(accountId, account),
+  );
+  const output = result.stdout || result.stderr;
+
+  switch (account.agent) {
+    case "claude-code": {
+      try {
+        const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+        return parsed["loggedIn"] === true;
+      } catch {
+        return false;
+      }
+    }
+    case "codex":
+      if (/not logged in/i.test(output)) {
+        return false;
+      }
+      if (/logged in/i.test(output)) {
+        return true;
+      }
+      return result.exitCode === 0;
+    default:
+      return result.exitCode === 0;
+  }
 }
 
 /** Return configured env vars to exclude from runtime launch shells. */
@@ -1188,6 +1277,35 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       accountId,
       agentName: selectedAgentName,
     });
+
+    const activeSessionsByAccount = getActiveSessionsByAccount(config, routingSessions);
+    const capacityState = await readCapacityState(resolvedAccount.accountId);
+    const selectedCapacity = computeAccountCapacity(
+      resolvedAccount.accountId,
+      resolvedAccount.account,
+      capacityState,
+      activeSessionsByAccount.get(resolvedAccount.accountId) ?? 0,
+    );
+
+    if (selectedCapacity.status === "fully-exhausted") {
+      throw new Error(
+        `Account ${resolvedAccount.accountId} has no capacity (0% base quota, overage disabled)`,
+      );
+    }
+
+    if (selectedCapacity.status === "overage-only") {
+      console.warn(`⚠ Using overage budget for account ${resolvedAccount.accountId}`);
+    }
+
+    const accountAuthValid = await isAccountAuthValid(
+      resolvedAccount.accountId,
+      resolvedAccount.account,
+    );
+    if (!accountAuthValid) {
+      throw new Error(
+        `Account ${resolvedAccount.accountId} auth is invalid or expired. Run \`syn accounts login ${resolvedAccount.accountId}\` to fix.`,
+      );
+    }
 
     let handle: RuntimeHandle;
     try {

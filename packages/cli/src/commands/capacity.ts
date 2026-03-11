@@ -93,7 +93,7 @@ function printCapacityRow(capacity: AccountCapacity): void {
 export function registerCapacity(program: Command): void {
   program
     .command("capacity")
-    .description("Show per-account capacity and headroom")
+    .description("Show per-account routing capacity, quota headroom, and overage state")
     .option("--agent <type>", "Filter to accounts for this agent type (e.g. codex, claude-code)")
     .option("--available", "Only show accounts with remaining quota")
     .option("--json", "Output as JSON")
