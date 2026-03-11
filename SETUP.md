@@ -269,6 +269,7 @@ reactions:
 reactions:
   agent-stuck:
     threshold: 10m # Consider stuck after 10 minutes of inactivity
+    noCommitTimeout: 20m # Escalate if nothing has been pushed after 20 minutes
     action: notify
     priority: urgent
 ```

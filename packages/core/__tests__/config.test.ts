@@ -158,6 +158,29 @@ reactions:
       );
     });
 
+    it("includes a default noCommitTimeout on agent-stuck", () => {
+      const configPath = join(testDir, "default-stuck-config.yaml");
+      writeFileSync(
+        configPath,
+        `
+projects:
+  test-project:
+    repo: test/repo
+    path: ${testDir}
+    defaultBranch: main
+`,
+      );
+
+      const config = loadConfig(configPath);
+
+      expect(config.reactions["agent-stuck"]).toEqual(
+        expect.objectContaining({
+          threshold: "10m",
+          noCommitTimeout: "20m",
+        }),
+      );
+    });
+
     it("parses progressChecks config and normalizes notify to an array", () => {
       const configPath = join(testDir, "progress-config.yaml");
 

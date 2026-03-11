@@ -27,6 +27,7 @@ import {
   type Session,
   type SessionId,
   type SessionSpawnConfig,
+  type SessionSendOptions,
   type OrchestratorSpawnConfig,
   type CleanupResult,
   type ClaimPROptions,
@@ -2086,7 +2087,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     return result;
   }
 
-  async function send(sessionId: SessionId, message: string): Promise<void> {
+  async function send(
+    sessionId: SessionId,
+    message: string,
+    options?: SessionSendOptions,
+  ): Promise<void> {
     const { raw, sessionsDir, project } = requireSessionRecord(sessionId);
     const persistedStatus = validateStatus(raw["status"]);
     const pause = getProjectPause(project);
@@ -2299,8 +2304,18 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
 
     // A freshly delivered prompt means the session is actively working again,
     // even if the last persisted status was idle/stuck/review-related.
+    const metadataUpdates: Record<string, string> = {};
+
     if (!NON_RESTORABLE_STATUSES.has(persistedStatus)) {
-      updateMetadata(sessionsDir, sessionId, { status: "working" });
+      metadataUpdates["status"] = "working";
+    }
+
+    if (options?.resetNoCommitTimeout) {
+      metadataUpdates["noCommitWindowStartedAt"] = new Date().toISOString();
+    }
+
+    if (Object.keys(metadataUpdates).length > 0) {
+      updateMetadata(sessionsDir, sessionId, metadataUpdates);
     }
   }
 

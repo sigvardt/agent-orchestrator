@@ -2189,6 +2189,24 @@ describe("send", () => {
     expect(readMetadataRaw(sessionsDir, "app-1")?.["status"]).toBe("working");
   });
 
+  it("resets the no-commit timer when requested", async () => {
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+    vi.mocked(mockRuntime.getOutput).mockResolvedValueOnce("before").mockResolvedValueOnce("after");
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await sm.send("app-1", "Keep going", { resetNoCommitTimeout: true });
+
+    const metadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(metadata?.["status"]).toBe("working");
+    expect(metadata?.["noCommitWindowStartedAt"]).toBeDefined();
+  });
+
   it("prefers a live session over stale terminal metadata when sending", async () => {
     writeMetadata(sessionsDir, "app-1", {
       worktree: "/tmp",

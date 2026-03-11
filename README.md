@@ -153,6 +153,11 @@ reactions:
   approved-and-green:
     auto: false
     action: notify
+  agent-stuck:
+    threshold: 10m
+    noCommitTimeout: 20m
+    action: notify
+    priority: urgent
 ```
 
 CI fails → agent gets the logs and fixes it. Reviewer requests changes → agent addresses them. PR approved with green CI → you get a notification to merge.

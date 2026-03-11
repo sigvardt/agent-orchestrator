@@ -644,6 +644,43 @@ function parseDirtyFiles(output: string | null): string[] {
     });
 }
 
+function parseRemoteBranchRefs(output: string | null): string[] {
+  if (!output) return [];
+
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => Boolean(line) && !line.includes("->"));
+}
+
+function matchesRemoteBranch(branch: string | null, ref: string | null): boolean {
+  if (!branch || !ref) return false;
+  return ref === branch || ref.endsWith(`/${branch}`);
+}
+
+async function resolvePushedBranchRef(
+  workspacePath: string,
+  branch: string | null,
+): Promise<string | null> {
+  const upstreamOutput = await runGitProgressCommand(
+    ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    workspacePath,
+  );
+  const upstreamRef = upstreamOutput?.trim() || null;
+  if (matchesRemoteBranch(branch, upstreamRef)) {
+    return upstreamRef;
+  }
+
+  if (!branch) {
+    return null;
+  }
+
+  const remoteBranches = parseRemoteBranchRefs(
+    await runGitProgressCommand(["branch", "-r", "--list", `*/${branch}`], workspacePath),
+  );
+  return remoteBranches.length === 1 ? remoteBranches[0] : null;
+}
+
 async function collectGitState(session: Session, nowMs: number): Promise<ProgressGitState> {
   const workspacePath = session.workspacePath;
   if (!workspacePath) {
@@ -657,25 +694,24 @@ async function collectGitState(session: Session, nowMs: number): Promise<Progres
   }
 
   const createdAtIso = session.createdAt.toISOString();
-  const [branchOutput, commitCountOutput, lastCommitOutput, dirtyOutput, upstreamOutput] =
-    await Promise.all([
-      runGitProgressCommand(["branch", "--show-current"], workspacePath),
-      runGitProgressCommand(
-        ["rev-list", "--count", `--since=${createdAtIso}`, "HEAD"],
-        workspacePath,
-      ),
-      runGitProgressCommand(["log", "-1", "--format=%ct"], workspacePath),
-      runGitProgressCommand(["status", "--porcelain", "--untracked-files=all"], workspacePath),
-      runGitProgressCommand(
-        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-        workspacePath,
-      ),
-    ]);
+  const branchOutput = await runGitProgressCommand(["branch", "--show-current"], workspacePath);
+  const branch = branchOutput?.trim() || session.branch;
+  const pushedBranchRef = await resolvePushedBranchRef(workspacePath, branch);
+  const [commitCountOutput, lastCommitOutput, dirtyOutput] = await Promise.all([
+    pushedBranchRef
+      ? runGitProgressCommand(
+          ["rev-list", "--count", `--since=${createdAtIso}`, pushedBranchRef],
+          workspacePath,
+        )
+      : Promise.resolve("0"),
+    runGitProgressCommand(["log", "-1", "--format=%ct"], workspacePath),
+    runGitProgressCommand(["status", "--porcelain", "--untracked-files=all"], workspacePath),
+  ]);
 
   const lastCommitSeconds = lastCommitOutput ? Number.parseInt(lastCommitOutput, 10) : Number.NaN;
 
   return {
-    branch: branchOutput?.trim() || session.branch,
+    branch,
     commitsSinceSpawn: commitCountOutput
       ? Math.max(0, Number.parseInt(commitCountOutput, 10) || 0)
       : 0,
@@ -683,7 +719,7 @@ async function collectGitState(session: Session, nowMs: number): Promise<Progres
       ? toElapsedMinutes(lastCommitSeconds * 1000, nowMs)
       : null,
     dirtyFiles: parseDirtyFiles(dirtyOutput),
-    hasPushed: Boolean(upstreamOutput?.trim()) || Boolean(session.pr),
+    hasPushed: Boolean(pushedBranchRef) || Boolean(session.pr),
   };
 }
 
@@ -1547,17 +1583,65 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
   }
 
+  function getAgentStuckDurationMs(
+    session: Session,
+    field: "threshold" | "noCommitTimeout",
+  ): number | null {
+    const stuckReaction = getReactionConfigForSession(session, "agent-stuck");
+    const duration = stuckReaction?.[field];
+    if (typeof duration !== "string") return null;
+
+    const durationMs = parseDuration(duration);
+    return durationMs > 0 ? durationMs : null;
+  }
+
   /** Check if idle time exceeds the agent-stuck threshold. */
   function isIdleBeyondThreshold(session: Session, idleTimestamp: Date): boolean {
-    const stuckReaction =
-      config.projects[session.projectId]?.reactions?.["agent-stuck"] ??
-      config.reactions["agent-stuck"];
-    const thresholdStr = (stuckReaction as Record<string, unknown> | undefined)?.threshold;
-    if (typeof thresholdStr !== "string") return false;
-    const stuckThresholdMs = parseDuration(thresholdStr);
-    if (stuckThresholdMs <= 0) return false;
+    const stuckThresholdMs = getAgentStuckDurationMs(session, "threshold");
+    if (stuckThresholdMs === null) return false;
     const idleMs = Date.now() - idleTimestamp.getTime();
     return idleMs > stuckThresholdMs;
+  }
+
+  function getNoCommitWindowStartedAtMs(session: Session): number {
+    return parseTimestampMs(session.metadata["noCommitWindowStartedAt"]) ?? session.createdAt.getTime();
+  }
+
+  function shouldApplyNoCommitTimeoutToStatus(status: SessionStatus): boolean {
+    return (
+      status === SESSION_STATUS.SPAWNING ||
+      status === SESSION_STATUS.WORKING ||
+      status === SESSION_STATUS.COMPLETED ||
+      status === SESSION_STATUS.STUCK ||
+      status === SESSION_STATUS.PR_OPEN ||
+      status === SESSION_STATUS.REVIEW_PENDING ||
+      status === SESSION_STATUS.APPROVED
+    );
+  }
+
+  async function isNoCommitBeyondThreshold(session: Session, nowMs: number): Promise<boolean> {
+    if (!session.workspacePath) {
+      return false;
+    }
+
+    const noCommitTimeoutMs = getAgentStuckDurationMs(session, "noCommitTimeout");
+    if (noCommitTimeoutMs === null) {
+      return false;
+    }
+
+    if (parseTimestampMs(session.metadata["firstPushedCommitAt"]) !== null) {
+      return false;
+    }
+
+    const gitState = await collectGitState(session, nowMs);
+    if (gitState.commitsSinceSpawn > 0) {
+      updateSessionMetadata(session, {
+        firstPushedCommitAt: session.metadata["firstPushedCommitAt"] ?? new Date(nowMs).toISOString(),
+      });
+      return false;
+    }
+
+    return nowMs - getNoCommitWindowStartedAtMs(session) > noCommitTimeoutMs;
   }
 
   async function evaluateOpenPR(
@@ -1647,6 +1731,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     ) {
       return SESSION_STATUS.DONE;
     }
+
+    const nowMs = Date.now();
 
     const project = config.projects[session.projectId];
     if (!project) return currentStatus;
@@ -1798,6 +1884,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
     }
 
+    const noCommitTimedOut = await isNoCommitBeyondThreshold(session, nowMs);
+
     // 4. Check PR state if PR exists
     if (session.pr && scm) {
       let verificationEvaluation = await evaluatePostPushVerification(session, project);
@@ -1839,6 +1927,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           return SESSION_STATUS.APPROVED;
         }
 
+        if (noCommitTimedOut && shouldApplyNoCommitTimeoutToStatus(currentStatus)) {
+          return SESSION_STATUS.STUCK;
+        }
+
         if (
           detectedIdleTimestamp &&
           isIdleBeyondThreshold(session, detectedIdleTimestamp) &&
@@ -1871,6 +1963,13 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
         if (preserveCurrentStatus) {
           return currentStatus;
+        }
+
+        if (
+          noCommitTimedOut &&
+          shouldApplyNoCommitTimeoutToStatus(openPREvaluation.status)
+        ) {
+          return SESSION_STATUS.STUCK;
         }
 
         if (openPREvaluation.status === SESSION_STATUS.APPROVED) {
@@ -1913,6 +2012,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     if (preserveCurrentStatus) {
       return currentStatus;
+    }
+
+    if (noCommitTimedOut && shouldApplyNoCommitTimeoutToStatus(currentStatus)) {
+      return SESSION_STATUS.STUCK;
     }
 
     // 5. Agents can finish a turn without exiting. When they become ready/idle and

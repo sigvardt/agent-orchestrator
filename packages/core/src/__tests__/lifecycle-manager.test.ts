@@ -102,6 +102,12 @@ function createCommittedRepo(repoPath: string, files: Record<string, string> = {
   return repoPath;
 }
 
+function createBareRemoteRepo(remotePath: string): string {
+  mkdirSync(remotePath, { recursive: true });
+  runGit(remotePath, "init", "--bare");
+  return remotePath;
+}
+
 function computeEventIdempotencyKey(
   sessionId: string,
   transition: string,
@@ -896,6 +902,175 @@ describe("check (single session)", () => {
       "session.completed",
       "reaction.triggered",
     ]);
+  });
+
+  it("marks sessions stuck after noCommitTimeout when commits exist only locally", async () => {
+    config.reactions["agent-stuck"] = {
+      auto: false,
+      action: "notify",
+      threshold: "1h",
+      noCommitTimeout: "5m",
+    };
+
+    const remotePath = createBareRemoteRepo(join(tmpDir, "remote.git"));
+    const repoPath = createCommittedRepo(join(tmpDir, "repo-local-only"));
+    runGit(repoPath, "remote", "add", "origin", remotePath);
+    runGit(repoPath, "push", "-u", "origin", "main");
+    runGit(repoPath, "checkout", "-b", "feat/local-only");
+    writeRepoFile(repoPath, "src/local.txt", "visible only locally\n");
+    runGit(repoPath, "add", "src/local.txt");
+    runGit(repoPath, "commit", "-m", "local only");
+
+    const createdAt = new Date(Date.now() - 10 * 60_000);
+    const session = makeSession({
+      status: "working",
+      branch: "feat/local-only",
+      workspacePath: repoPath,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/local-only",
+        agent: "mock-agent",
+        createdAt: createdAt.toISOString(),
+      },
+    });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: repoPath,
+      branch: "feat/local-only",
+      status: "working",
+      project: "my-app",
+      agent: "mock-agent",
+      createdAt: createdAt.toISOString(),
+      runtimeHandle: JSON.stringify(session.runtimeHandle),
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: mockRegistry,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("stuck");
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["status"]).toBe("stuck");
+  });
+
+  it("respects a reset no-commit window after steering", async () => {
+    config.reactions["agent-stuck"] = {
+      auto: false,
+      action: "notify",
+      threshold: "1h",
+      noCommitTimeout: "5m",
+    };
+
+    const remotePath = createBareRemoteRepo(join(tmpDir, "remote-steering.git"));
+    const repoPath = createCommittedRepo(join(tmpDir, "repo-steering"));
+    runGit(repoPath, "remote", "add", "origin", remotePath);
+    runGit(repoPath, "push", "-u", "origin", "main");
+    runGit(repoPath, "checkout", "-b", "feat/steered");
+
+    const createdAt = new Date(Date.now() - 10 * 60_000);
+    const noCommitWindowStartedAt = new Date(Date.now() - 60_000).toISOString();
+    const session = makeSession({
+      status: "working",
+      branch: "feat/steered",
+      workspacePath: repoPath,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/steered",
+        agent: "mock-agent",
+        createdAt: createdAt.toISOString(),
+        noCommitWindowStartedAt,
+      },
+    });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: repoPath,
+      branch: "feat/steered",
+      status: "working",
+      project: "my-app",
+      agent: "mock-agent",
+      createdAt: createdAt.toISOString(),
+      noCommitWindowStartedAt,
+      runtimeHandle: JSON.stringify(session.runtimeHandle),
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: mockRegistry,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("working");
+    expect(readMetadataRaw(sessionsDir, "app-1")?.["status"]).toBe("working");
+  });
+
+  it("records first pushed commit and skips noCommitTimeout after a push", async () => {
+    config.reactions["agent-stuck"] = {
+      auto: false,
+      action: "notify",
+      threshold: "1h",
+      noCommitTimeout: "5m",
+    };
+
+    const remotePath = createBareRemoteRepo(join(tmpDir, "remote-pushed.git"));
+    const repoPath = createCommittedRepo(join(tmpDir, "repo-pushed"));
+    runGit(repoPath, "remote", "add", "origin", remotePath);
+    runGit(repoPath, "push", "-u", "origin", "main");
+    runGit(repoPath, "checkout", "-b", "feat/pushed");
+
+    const createdAt = new Date(Date.now() - 10 * 60_000);
+    writeRepoFile(repoPath, "src/pushed.txt", "visible on remote\n");
+    runGit(repoPath, "add", "src/pushed.txt");
+    runGit(repoPath, "commit", "-m", "push it");
+    runGit(repoPath, "push", "-u", "origin", "feat/pushed");
+
+    const session = makeSession({
+      status: "working",
+      branch: "feat/pushed",
+      workspacePath: repoPath,
+      createdAt,
+      metadata: {
+        status: "working",
+        project: "my-app",
+        branch: "feat/pushed",
+        agent: "mock-agent",
+        createdAt: createdAt.toISOString(),
+      },
+    });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: repoPath,
+      branch: "feat/pushed",
+      status: "working",
+      project: "my-app",
+      agent: "mock-agent",
+      createdAt: createdAt.toISOString(),
+      runtimeHandle: JSON.stringify(session.runtimeHandle),
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: mockRegistry,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    const metadata = readMetadataRaw(sessionsDir, "app-1");
+    expect(lm.getStates().get("app-1")).toBe("working");
+    expect(metadata?.["status"]).toBe("working");
+    expect(metadata?.["firstPushedCommitAt"]).toBeDefined();
   });
 
   it("stays working when agent is idle but process is still running (fallback path)", async () => {

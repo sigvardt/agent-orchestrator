@@ -974,6 +974,9 @@ export interface ReactionConfig {
   /** Threshold duration for time-based triggers (e.g. "10m" for stuck detection) */
   threshold?: string;
 
+  /** Threshold duration for escalating sessions with no pushed commits since spawn */
+  noCommitTimeout?: string;
+
   /** Whether to include a summary in the notification */
   includeSummary?: boolean;
 }
@@ -1332,11 +1335,18 @@ export interface SessionMetadata {
   opencodeSessionId?: string;
   lastProgressSnapshotAt?: string;
   progressSnapshotCount?: string;
+  noCommitWindowStartedAt?: string;
+  firstPushedCommitAt?: string;
 }
 
 // =============================================================================
 // SERVICE INTERFACES (core, not pluggable)
 // =============================================================================
+
+export interface SessionSendOptions {
+  /** Reset the no-commit timeout window after manual steering. */
+  resetNoCommitTimeout?: boolean;
+}
 
 /** Session manager — CRUD for sessions */
 export interface SessionManager {
@@ -1350,7 +1360,7 @@ export interface SessionManager {
     projectId?: string,
     options?: { dryRun?: boolean; purgeOpenCode?: boolean },
   ): Promise<CleanupResult>;
-  send(sessionId: SessionId, message: string): Promise<void>;
+  send(sessionId: SessionId, message: string, options?: SessionSendOptions): Promise<void>;
   claimPR(sessionId: SessionId, prRef: string, options?: ClaimPROptions): Promise<ClaimPRResult>;
 }
 

@@ -71,7 +71,7 @@ spawning → working → completed
 - `ci-failed` → send fix prompt to agent
 - `changes-requested` → send review comments to agent
 - `approved-and-green` → notify human (or auto-merge)
-- `agent-stuck` → notify human
+- `agent-stuck` → notify human after prolonged idle time or no pushed commits
 
 **Polling loop:**
 

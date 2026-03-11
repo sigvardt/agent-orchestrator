@@ -147,5 +147,6 @@ projects:
 #
 #   agent-stuck:
 #     threshold: 10m
+#     noCommitTimeout: 20m
 #     action: notify
 #     priority: urgent

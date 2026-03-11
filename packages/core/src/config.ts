@@ -80,6 +80,7 @@ const ReactionConfigSchema = z.object({
   refireIntervalMs: z.number().nonnegative().optional(),
   escalateAfter: z.union([z.number(), z.string()]).optional(),
   threshold: z.string().optional(),
+  noCommitTimeout: z.string().optional(),
   includeSummary: z.boolean().optional(),
 });
 
@@ -407,6 +408,7 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
       priority: "urgent",
       refireIntervalMs: 300_000,
       threshold: "10m",
+      noCommitTimeout: "20m",
     },
     "agent-needs-input": {
       auto: true,
