@@ -9,12 +9,12 @@ import {
   type OrchestratorConfig,
   type Session,
   getSessionsDir,
-  loadConfig,
   updateMetadata,
 } from "@syntese/core";
 import { exec, tmux } from "../lib/shell.js";
 import { getAgentByName } from "../lib/plugins.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { loadCliConfig } from "../lib/config.js";
 
 /**
  * Resolve session context: tmux target name and Agent plugin.
@@ -29,7 +29,7 @@ async function resolveSessionContext(sessionName: string): Promise<{
   sessionManager: OpenCodeSessionManager | null;
 }> {
   try {
-    const config = loadConfig();
+    const config = loadCliConfig();
     const sm = await getSessionManager(config);
     const session = await sm.get(sessionName);
     if (session) {

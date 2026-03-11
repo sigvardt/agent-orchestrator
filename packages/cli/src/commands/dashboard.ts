@@ -3,9 +3,10 @@ import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig, PRIMARY_CLI_COMMAND } from "@syntese/core";
+import { PRIMARY_CLI_COMMAND } from "@syntese/core";
 import { findWebDir, buildDashboardEnv, waitForPortAndOpen } from "../lib/web-dir.js";
 import { cleanNextCache, findRunningDashboardPid, findProcessWebDir, waitForPortFree } from "../lib/dashboard-rebuild.js";
+import { loadCliConfig } from "../lib/config.js";
 
 export function registerDashboard(program: Command): void {
   program
@@ -15,7 +16,7 @@ export function registerDashboard(program: Command): void {
     .option("--no-open", "Don't open browser automatically")
     .option("--rebuild", "Clean stale build artifacts and rebuild before starting")
     .action(async (opts: { port?: string; open?: boolean; rebuild?: boolean }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       const port = opts.port ? parseInt(opts.port, 10) : (config.port ?? 3000);
 
       if (isNaN(port) || port < 1 || port > 65535) {

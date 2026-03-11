@@ -1,8 +1,8 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig } from "@syntese/core";
 import { exec, getTmuxSessions } from "../lib/shell.js";
 import { matchesPrefix } from "../lib/session-utils.js";
+import { loadCliConfig } from "../lib/config.js";
 
 async function openInTerminal(sessionName: string, newWindow?: boolean): Promise<boolean> {
   try {
@@ -22,7 +22,7 @@ export function registerOpen(program: Command): void {
     .argument("[target]", 'Session name, project ID, or "all" to open everything')
     .option("-w, --new-window", "Open in a new terminal window")
     .action(async (target: string | undefined, opts: { newWindow?: boolean }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       const allTmux = await getTmuxSessions();
 
       let sessionsToOpen: string[] = [];

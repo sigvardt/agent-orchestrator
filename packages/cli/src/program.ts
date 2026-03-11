@@ -14,6 +14,7 @@ import { registerServices } from "./commands/services.js";
 import { registerVerify } from "./commands/verify.js";
 import { registerCapacity } from "./commands/capacity.js";
 import { registerAccounts } from "./commands/accounts.js";
+import { registerProject } from "./commands/project.js";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -40,6 +41,7 @@ export function createProgram(): Command {
   registerVerify(program);
   registerCapacity(program);
   registerAccounts(program);
+  registerProject(program);
 
   return program;
 }

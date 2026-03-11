@@ -24,6 +24,10 @@ vi.mock("@syntese/core", () => ({
   loadConfig: () => mockConfigRef.current,
 }));
 
+vi.mock("../../src/lib/config.js", () => ({
+  loadCliConfig: () => mockConfigRef.current,
+}));
+
 import { Command } from "commander";
 import { registerOpen } from "../../src/commands/open.js";
 

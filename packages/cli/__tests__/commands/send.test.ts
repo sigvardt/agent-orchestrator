@@ -58,6 +58,10 @@ vi.mock("@syntese/core", () => ({
   updateMetadata: mockUpdateMetadata,
 }));
 
+vi.mock("../../src/lib/config.js", () => ({
+  loadCliConfig: () => mockConfigRef.current,
+}));
+
 vi.mock("../../src/lib/create-session-manager.js", () => ({
   getSessionManager: async () => mockSessionManager,
 }));

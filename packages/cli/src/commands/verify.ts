@@ -5,9 +5,9 @@ import {
   type ProjectConfig,
   type OrchestratorConfig,
   type PluginRegistry,
-  loadConfig,
   PRIMARY_CLI_COMMAND,
 } from "@syntese/core";
+import { loadCliConfig } from "../lib/config.js";
 
 /**
  * Resolve the target project from config.
@@ -85,7 +85,7 @@ export function registerVerify(program: Command): void {
       ) => {
         let config: OrchestratorConfig;
         try {
-          config = loadConfig();
+          config = loadCliConfig();
         } catch {
           console.error(chalk.red(`No config found. Run \`${PRIMARY_CLI_COMMAND} init\` first.`));
           process.exit(1);

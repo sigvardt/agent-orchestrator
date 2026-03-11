@@ -10,7 +10,7 @@
 
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig, type AccountCapacity } from "@syntese/core";
+import type { AccountCapacity } from "@syntese/core";
 import {
   computeAccountCapacity,
   getActiveSessionsByAccount,
@@ -20,6 +20,7 @@ import {
 } from "../lib/capacity-store.js";
 import { getRegistry, getSessionManager } from "../lib/create-session-manager.js";
 import { banner, padCol } from "../lib/format.js";
+import { loadCliConfig } from "../lib/config.js";
 
 // ─── Display Helpers ─────────────────────────────────────────────────────────
 
@@ -99,9 +100,9 @@ export function registerCapacity(program: Command): void {
     .option("--json", "Output as JSON")
     .action(
       async (opts: { agent?: string; available?: boolean; json?: boolean }) => {
-        let config: ReturnType<typeof loadConfig>;
+        let config: ReturnType<typeof loadCliConfig>;
         try {
-          config = loadConfig();
+          config = loadCliConfig();
         } catch {
           console.error(chalk.red("No config found. Run `syn init` first."));
           process.exit(1);

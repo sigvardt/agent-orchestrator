@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig } from "@syntese/core";
+import { loadCliConfig } from "../lib/config.js";
 import {
   getManagedServicesStatus,
   installManagedServices,
@@ -94,7 +94,7 @@ export function registerServices(program: Command): void {
     .option("--wait-timeout <ms>", "Readiness wait timeout in ms", "30000")
     .action(async (opts: ManagerOpts & { enable?: boolean; start?: boolean; waitTimeout?: string }) => {
       try {
-        const config = loadConfig();
+          const config = loadCliConfig();
         const manager = parseManagerPreference(opts.manager);
         const timeoutMs = parseTimeout(opts.waitTimeout, 30_000);
 
@@ -138,7 +138,7 @@ export function registerServices(program: Command): void {
     .option("--wait-timeout <ms>", "Readiness wait timeout in ms", "30000")
     .action(async (opts: ManagerOpts & { waitTimeout?: string }) => {
       try {
-        const config = loadConfig();
+          const config = loadCliConfig();
         const manager = parseManagerPreference(opts.manager);
         const timeoutMs = parseTimeout(opts.waitTimeout, 30_000);
         const result = await startManagedServices(config, { manager, waitTimeoutMs: timeoutMs });
@@ -160,7 +160,7 @@ export function registerServices(program: Command): void {
     .option("--manager <manager>", "Manager backend: auto|systemd|supervisor", "auto")
     .action(async (opts: ManagerOpts) => {
       try {
-        const config = loadConfig();
+          const config = loadCliConfig();
         const manager = parseManagerPreference(opts.manager);
         const result = await stopManagedServices(config, { manager });
         if (result.stopped) {
@@ -183,7 +183,7 @@ export function registerServices(program: Command): void {
     .option("--strict", "Exit with code 1 when any service is not ready")
     .action(async (opts: ManagerOpts & { json?: boolean; strict?: boolean }) => {
       try {
-        const config = loadConfig();
+          const config = loadCliConfig();
         const manager = parseManagerPreference(opts.manager);
         const status = await getManagedServicesStatus(config, manager);
 
@@ -207,7 +207,7 @@ export function registerServices(program: Command): void {
     .description("Internal: run portable Syntese services supervisor")
     .action(async () => {
       try {
-        const config = loadConfig();
+          const config = loadCliConfig();
         await runSupervisorLoop(config);
       } catch (err) {
         console.error(chalk.red("Supervisor crashed:"), err instanceof Error ? err.message : String(err));

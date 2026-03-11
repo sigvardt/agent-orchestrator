@@ -687,8 +687,12 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   /**
    * Get the sessions directory for a project.
    */
+  function getProjectConfigPath(project: ProjectConfig): string {
+    return project.configPath ?? config.configPath;
+  }
+
   function getProjectSessionsDir(project: ProjectConfig): string {
-    return getSessionsDir(config.configPath, project.path);
+    return getSessionsDir(getProjectConfigPath(project), project.path);
   }
 
   function getProjectPause(project: ProjectConfig): {
@@ -723,7 +727,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   }
 
   function getManagedWorkspaceRoots(project: ProjectConfig, projectId?: string): string[] {
-    const roots = [getWorktreesDir(config.configPath, project.path)];
+    const roots = [getWorktreesDir(getProjectConfigPath(project), project.path)];
     const legacyIds = new Set<string>();
     if (projectId) {
       legacyIds.add(projectId);
@@ -767,7 +771,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       // Filter by project if specified
       if (projectIdFilter && projectId !== projectIdFilter) continue;
 
-      const sessionsDir = getSessionsDir(config.configPath, project.path);
+      const sessionsDir = getSessionsDir(getProjectConfigPath(project), project.path);
       if (!existsSync(sessionsDir)) continue;
 
       const files = readdirSync(sessionsDir);
@@ -1108,21 +1112,14 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     const sessionsDir = getProjectSessionsDir(project);
 
     // Validate and store .origin file (new architecture only)
-    if (config.configPath) {
-      validateAndStoreOrigin(config.configPath, project.path);
-    }
+    validateAndStoreOrigin(getProjectConfigPath(project), project.path);
 
     // Determine session ID — atomically reserve to prevent concurrent collisions
     const existingSessions = listMetadata(sessionsDir);
     let num = getNextSessionNumber(existingSessions, project.sessionPrefix);
     let sessionId: string;
-    let tmuxName: string | undefined;
     for (let attempts = 0; attempts < 10; attempts++) {
       sessionId = `${project.sessionPrefix}-${num}`;
-      // Generate tmux name if using new architecture
-      if (config.configPath) {
-        tmuxName = generateTmuxName(config.configPath, project.sessionPrefix, num);
-      }
       if (reserveSessionId(sessionsDir, sessionId)) break;
       num++;
       if (attempts === 9) {
@@ -1131,11 +1128,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         );
       }
     }
-    // Reassign to satisfy TypeScript's flow analysis (not redundant from compiler's perspective)
     sessionId = `${project.sessionPrefix}-${num}`;
-    if (config.configPath) {
-      tmuxName = generateTmuxName(config.configPath, project.sessionPrefix, num);
-    }
+    const tmuxName = generateTmuxName(getProjectConfigPath(project), project.sessionPrefix, num);
 
     // Determine branch name — explicit branch always takes priority
     let branch: string;
@@ -1488,20 +1482,14 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       project.orchestratorSessionStrategy,
     );
 
-    // Generate tmux name if using new architecture
-    let tmuxName: string | undefined;
-    if (config.configPath) {
-      const hash = generateConfigHash(config.configPath);
-      tmuxName = `${hash}-${sessionId}`;
-    }
+    const hash = generateConfigHash(getProjectConfigPath(project));
+    const tmuxName = `${hash}-${sessionId}`;
 
     // Get the sessions directory for this project
     const sessionsDir = getProjectSessionsDir(project);
 
     // Validate and store .origin file
-    if (config.configPath) {
-      validateAndStoreOrigin(config.configPath, project.path);
-    }
+    validateAndStoreOrigin(getProjectConfigPath(project), project.path);
 
     // Setup agent hooks for automatic metadata updates
     if (plugins.agent.setupWorkspaceHooks) {
@@ -1513,7 +1501,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     // via tmux send-keys or paste-buffer. File-based approach is reliable.
     let systemPromptFile: string | undefined;
     if (orchestratorConfig.systemPrompt) {
-      const baseDir = getProjectBaseDir(config.configPath, project.path);
+      const baseDir = getProjectBaseDir(getProjectConfigPath(project), project.path);
       mkdirSync(baseDir, { recursive: true });
       systemPromptFile = join(baseDir, "orchestrator-prompt.md");
       writeFileSync(systemPromptFile, orchestratorConfig.systemPrompt, "utf-8");

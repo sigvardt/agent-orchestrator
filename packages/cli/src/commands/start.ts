@@ -32,6 +32,7 @@ import {
 import { exec, execSilent } from "../lib/shell.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 import { ensureLifecycleWorker, stopLifecycleWorker } from "../lib/lifecycle-service.js";
+import { loadCliConfig } from "../lib/config.js";
 import {
   findWebDir,
   waitForPortAndOpen,
@@ -407,7 +408,7 @@ export function registerStart(program: Command): void {
             ({ projectId, project } = resolveProjectByRepo(config, result.parsed));
           } else {
             // Normal flow — load existing config
-            config = loadConfig();
+            config = loadCliConfig();
             ({ projectId, project } = resolveProject(config, projectArg));
           }
 
@@ -438,7 +439,7 @@ export function registerStop(program: Command): void {
     .action(
       async (projectArg?: string, opts: { keepSession?: boolean; purgeSession?: boolean } = {}) => {
         try {
-          const config = loadConfig();
+          const config = loadCliConfig();
           const { projectId: _projectId, project } = resolveProject(config, projectArg);
           const sessionId = `${project.sessionPrefix}-orchestrator`;
 

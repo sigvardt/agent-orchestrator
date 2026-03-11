@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig } from "@syntese/core";
 import { getLifecycleManager } from "../lib/create-session-manager.js";
+import { loadCliConfig } from "../lib/config.js";
 import {
   clearLifecycleWorkerPid,
   getLifecycleWorkerStatus,
@@ -70,7 +70,7 @@ export function registerLifecycleWorker(program: Command): void {
     .argument("<project>", "Project ID from config")
     .option("--interval-ms <ms>", "Polling interval in milliseconds", "30000")
     .action(async (projectId: string, opts: { intervalMs?: string }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       if (!config.projects[projectId]) {
         console.error(chalk.red(`Unknown project: ${projectId}`));
         process.exit(1);

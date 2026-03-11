@@ -19,6 +19,16 @@ export {
   findConfigFile,
 } from "./config.js";
 
+export {
+  getRegistryPath,
+  loadRegistry,
+  saveRegistry,
+  addProject,
+  removeProject,
+  listProjects,
+  resolveProjectConfig,
+} from "./project-registry.js";
+
 // Plugin registry
 export { createPluginRegistry } from "./plugin-registry.js";
 

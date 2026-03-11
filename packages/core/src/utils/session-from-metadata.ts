@@ -22,7 +22,7 @@ export function sessionFromMetadata(
     status: options.status ?? validateStatus(meta["status"]),
     activity: options.activity ?? null,
     branch: meta["branch"] || null,
-    issueId: meta["issue"] || null,
+    issueId: meta["issueId"] || meta["issue"] || null,
     pr: meta["pr"]
       ? (() => {
           const parsed = parsePrFromUrl(meta["pr"]);

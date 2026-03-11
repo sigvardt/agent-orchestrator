@@ -10,7 +10,6 @@ import {
   type ActivityState,
   type Tracker,
   type ProjectConfig,
-  loadConfig,
   PRIMARY_CLI_COMMAND,
 } from "@syntese/core";
 import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
@@ -25,6 +24,7 @@ import {
 } from "../lib/format.js";
 import { getAgentByName, getSCM } from "../lib/plugins.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { loadCliConfig } from "../lib/config.js";
 
 interface SessionInfo {
   name: string;
@@ -48,7 +48,7 @@ async function gatherSessionInfo(
   session: Session,
   agent: Agent,
   scm: SCM,
-  projectConfig: ReturnType<typeof loadConfig>,
+  projectConfig: ReturnType<typeof loadCliConfig>,
 ): Promise<SessionInfo> {
   let branch = session.branch;
   const status = session.status;
@@ -209,9 +209,9 @@ export function registerStatus(program: Command): void {
     .option("-p, --project <id>", "Filter by project ID")
     .option("--json", "Output as JSON")
     .action(async (opts: { project?: string; json?: boolean }) => {
-      let config: ReturnType<typeof loadConfig>;
+  let config: ReturnType<typeof loadCliConfig>;
       try {
-        config = loadConfig();
+        config = loadCliConfig();
       } catch {
         console.log(chalk.yellow(`No config found. Run \`${PRIMARY_CLI_COMMAND} init\` first.`));
         console.log(chalk.dim("Falling back to session discovery...\n"));

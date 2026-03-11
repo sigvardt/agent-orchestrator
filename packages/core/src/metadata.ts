@@ -78,6 +78,8 @@ export function readMetadata(dataDir: string, sessionId: SessionId): SessionMeta
     tmuxName: raw["tmuxName"],
     accountId: raw["accountId"],
     issue: raw["issue"],
+    issueId: raw["issueId"],
+    phase: raw["phase"],
     pr: raw["pr"],
     prAutoDetect:
       raw["prAutoDetect"] === "off" ? "off" : raw["prAutoDetect"] === "on" ? "on" : undefined,
@@ -154,6 +156,8 @@ export function writeMetadata(
   if (metadata.tmuxName) data["tmuxName"] = metadata.tmuxName;
   if (metadata.accountId) data["accountId"] = metadata.accountId;
   if (metadata.issue) data["issue"] = metadata.issue;
+  if (metadata.issueId) data["issueId"] = metadata.issueId;
+  if (metadata.phase) data["phase"] = metadata.phase;
   if (metadata.pr) data["pr"] = metadata.pr;
   if (metadata.prAutoDetect) data["prAutoDetect"] = metadata.prAutoDetect;
   if (metadata.summary) data["summary"] = metadata.summary;

@@ -49,6 +49,7 @@ export function Dashboard({
   projectIds = [],
 }: DashboardProps) {
   const { sessions, globalPause } = useSessionEvents(initialSessions, initialGlobalPause ?? null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [rateLimitDismissed, setRateLimitDismissed] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("board");
   const [backlogIssues, setBacklogIssues] = useState<BacklogIssue[]>([]);
@@ -56,6 +57,13 @@ export function Dashboard({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [verifyIssues, setVerifyIssues] = useState<BacklogIssue[]>([]);
   const [verifyLoading, setVerifyLoading] = useState(false);
+
+  const visibleSessions = useMemo(() => {
+    if (selectedProjectId === "all") {
+      return sessions;
+    }
+    return sessions.filter((session) => session.projectId === selectedProjectId);
+  }, [sessions, selectedProjectId]);
 
   const grouped = useMemo(() => {
     const zones: Record<AttentionLevel, DashboardSession[]> = {
@@ -66,18 +74,18 @@ export function Dashboard({
       working: [],
       done: [],
     };
-    for (const session of sessions) {
+    for (const session of visibleSessions) {
       zones[getAttentionLevel(session)].push(session);
     }
     return zones;
-  }, [sessions]);
+  }, [visibleSessions]);
 
   const openPRs = useMemo(() => {
-    return sessions
+    return visibleSessions
       .filter((s): s is DashboardSession & { pr: DashboardPR } => s.pr?.state === "open")
       .map((s) => s.pr)
       .sort((a, b) => mergeScore(a) - mergeScore(b));
-  }, [sessions]);
+  }, [visibleSessions]);
 
   // Fetch backlog issues
   const fetchBacklog = useCallback(async () => {
@@ -191,21 +199,21 @@ export function Dashboard({
   const hasKanbanSessions = KANBAN_LEVELS.some((l) => grouped[l].length > 0);
 
   const anyRateLimited = useMemo(
-    () => sessions.some((s) => s.pr && isPRRateLimited(s.pr)),
-    [sessions],
+    () => visibleSessions.some((s) => s.pr && isPRRateLimited(s.pr)),
+    [visibleSessions],
   );
 
   const liveStats = useMemo<DashboardStats>(
     () => ({
-      totalSessions: sessions.length,
-      workingSessions: sessions.filter((s) => s.activity !== null && s.activity !== "exited")
+      totalSessions: visibleSessions.length,
+      workingSessions: visibleSessions.filter((s) => s.activity !== null && s.activity !== "exited")
         .length,
-      openPRs: sessions.filter((s) => s.pr?.state === "open").length,
-      needsReview: sessions.filter(
+      openPRs: visibleSessions.filter((s) => s.pr?.state === "open").length,
+      needsReview: visibleSessions.filter(
         (s) => s.pr && !s.pr.isDraft && s.pr.reviewDecision === "pending",
       ).length,
     }),
-    [sessions],
+    [visibleSessions],
   );
 
   // Counts for tab badges
@@ -227,6 +235,20 @@ export function Dashboard({
           <StatusLine stats={liveStats} needsAttention={needsAttention} />
         </div>
         <div className="flex items-center gap-3">
+          {projectIds.length >= 2 && (
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
+            >
+              <option value="all">All projects</option>
+              {projectIds.map((projectId) => (
+                <option key={projectId} value={projectId}>
+                  {projectId}
+                </option>
+              ))}
+            </select>
+          )}
           {orchestratorId && (
             <a
               href={`/sessions/${encodeURIComponent(orchestratorId)}`}
@@ -287,7 +309,13 @@ export function Dashboard({
       <UsageOverview />
       <GitHubVitals
         projectName={projectName}
-        projectId={projectIds.length === 1 ? projectIds[0] : undefined}
+        projectId={
+          selectedProjectId !== "all"
+            ? selectedProjectId
+            : projectIds.length === 1
+              ? projectIds[0]
+              : undefined
+        }
       />
       {globalPause && (
         <div className="mb-6 rounded border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.07)] px-3.5 py-2.5 text-[11px] text-[var(--color-status-attention)]">

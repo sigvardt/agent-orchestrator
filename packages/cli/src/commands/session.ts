@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import chalk from "chalk";
 import type { Command } from "commander";
 import {
-  loadConfig,
   SessionNotRestorableError,
   WorkspaceMissingError,
   type SessionKillStepResult,
@@ -10,6 +9,7 @@ import {
 import { git, getTmuxActivity, tmux } from "../lib/shell.js";
 import { formatAge } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { loadCliConfig } from "../lib/config.js";
 
 function logKillStep(result: SessionKillStepResult): void {
   if (result.status === "success") {
@@ -35,7 +35,7 @@ export function registerSession(program: Command): void {
     .description("List all sessions")
     .option("-p, --project <id>", "Filter by project ID")
     .action(async (opts: { project?: string }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       if (opts.project && !config.projects[opts.project]) {
         console.error(chalk.red(`Unknown project: ${opts.project}`));
         process.exit(1);
@@ -101,7 +101,7 @@ export function registerSession(program: Command): void {
     .description("Attach to a session's tmux window")
     .argument("<session>", "Session name to attach")
     .action(async (sessionName: string) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       const sm = await getSessionManager(config);
       const sessionInfo = await sm.get(sessionName);
       const tmuxTarget = sessionInfo?.runtimeHandle?.id ?? sessionName;
@@ -136,7 +136,7 @@ export function registerSession(program: Command): void {
     .option("--purge-session", "Delete mapped OpenCode session during kill")
     .action(
       async (sessionName: string, opts: { keepSession?: boolean; purgeSession?: boolean }) => {
-        const config = loadConfig();
+        const config = loadCliConfig();
         const sm = await getSessionManager(config);
 
         try {
@@ -156,7 +156,7 @@ export function registerSession(program: Command): void {
     .option("-p, --project <id>", "Filter by project ID")
     .option("--dry-run", "Show what would be cleaned up without doing it")
     .action(async (opts: { project?: string; dryRun?: boolean }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       if (opts.project && !config.projects[opts.project]) {
         console.error(chalk.red(`Unknown project: ${opts.project}`));
         process.exit(1);
@@ -224,7 +224,7 @@ export function registerSession(program: Command): void {
         sessionName: string | undefined,
         opts: { assignOnGithub?: boolean },
       ) => {
-        const config = loadConfig();
+        const config = loadCliConfig();
         const resolvedSession =
           sessionName ?? process.env["AO_SESSION_NAME"] ?? process.env["AO_SESSION"];
 
@@ -274,7 +274,7 @@ export function registerSession(program: Command): void {
     .description("Restore a terminated/crashed session in-place")
     .argument("<session>", "Session name to restore")
     .action(async (sessionName: string) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       const sm = await getSessionManager(config);
 
       try {
@@ -306,7 +306,7 @@ export function registerSession(program: Command): void {
     .argument("<session>", "Session name to remap")
     .option("-f, --force", "Force fresh remap by re-discovering the OpenCode session")
     .action(async (sessionName: string, opts: { force?: boolean }) => {
-      const config = loadConfig();
+      const config = loadCliConfig();
       const sm = await getSessionManager(config);
 
       try {

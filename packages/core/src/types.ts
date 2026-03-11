@@ -1018,6 +1018,15 @@ export interface ShellEnvironmentPolicy {
   exclude: string[];
 }
 
+export interface ProjectRegistryEntry {
+  configPath: string;
+  addedAt: string;
+}
+
+export interface ProjectRegistry {
+  projects: Record<string, ProjectRegistryEntry>;
+}
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -1198,6 +1207,8 @@ export interface DefaultPlugins {
 }
 
 export interface ProjectConfig {
+  configPath?: string;
+
   /** Display name */
   name: string;
 
@@ -1402,6 +1413,8 @@ export interface SessionMetadata {
   tmuxName?: string; // Globally unique tmux session name (includes hash)
   accountId?: string;
   issue?: string;
+  issueId?: string;
+  phase?: string;
   pr?: string;
   prAutoDetect?: "on" | "off";
   summary?: string;
