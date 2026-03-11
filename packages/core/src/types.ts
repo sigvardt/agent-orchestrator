@@ -422,6 +422,10 @@ export interface UsageDial {
   displayValue: string;
   /** Optional reset timestamp as an ISO string */
   resetsAt?: string | null;
+  /** True when this value is a model-based estimate, not a live or cached reading */
+  isEstimated?: boolean;
+  /** Estimation confidence from 0 to 1; reaches 1 after ~50 historical samples */
+  estimationConfidence?: number;
 }
 
 export interface UsageSnapshot {
