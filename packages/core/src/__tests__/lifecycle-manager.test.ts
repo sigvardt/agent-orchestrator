@@ -365,6 +365,51 @@ describe("check (single session)", () => {
     expect(lm.getStates().get("app-1")).toBe("stuck");
   });
 
+  it("uses global agent-stuck threshold when project override omits threshold", async () => {
+    config.reactions = {
+      "agent-stuck": {
+        auto: true,
+        action: "notify",
+        threshold: "1m",
+      },
+    };
+    config.projects["my-app"] = {
+      ...config.projects["my-app"],
+      reactions: {
+        "agent-stuck": {
+          auto: true,
+          action: "notify",
+        },
+      },
+    };
+
+    vi.mocked(mockAgent.getActivityState).mockResolvedValue({
+      state: "idle",
+      timestamp: new Date(Date.now() - 120_000),
+    });
+
+    const session = makeSession({ status: "working", metadata: { agent: "opencode" } });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      agent: "opencode",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: mockRegistry,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    expect(lm.getStates().get("app-1")).toBe("stuck");
+  });
+
   it("preserves stuck state when getActivityState throws", async () => {
     vi.mocked(mockAgent.getActivityState).mockRejectedValue(new Error("probe failed"));
 

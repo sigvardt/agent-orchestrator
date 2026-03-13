@@ -182,10 +182,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
   /** Check if idle time exceeds the agent-stuck threshold. */
   function isIdleBeyondThreshold(session: Session, idleTimestamp: Date): boolean {
-    const stuckReaction =
-      config.projects[session.projectId]?.reactions?.["agent-stuck"] ??
-      config.reactions["agent-stuck"];
-    const thresholdStr = (stuckReaction as Record<string, unknown> | undefined)?.threshold;
+    const stuckReaction = getReactionConfigForSession(session, "agent-stuck");
+    const thresholdStr = stuckReaction?.threshold;
     if (typeof thresholdStr !== "string") return false;
     const stuckThresholdMs = parseDuration(thresholdStr);
     if (stuckThresholdMs <= 0) return false;
@@ -488,10 +486,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     return reactionConfig ? (reactionConfig as ReactionConfig) : null;
   }
 
-  function updateSessionMetadata(
-    session: Session,
-    updates: Partial<Record<string, string>>,
-  ): void {
+  function updateSessionMetadata(session: Session, updates: Partial<Record<string, string>>): void {
     const project = config.projects[session.projectId];
     if (!project) return;
 
@@ -634,12 +629,9 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       );
     }
     if (automatedComments !== null) {
-      const automatedFingerprint = makeFingerprint(
-        automatedComments.map((comment) => comment.id),
-      );
+      const automatedFingerprint = makeFingerprint(automatedComments.map((comment) => comment.id));
       const lastAutomatedFingerprint = session.metadata["lastAutomatedReviewFingerprint"] ?? "";
-      const lastAutomatedDispatchHash =
-        session.metadata["lastAutomatedReviewDispatchHash"] ?? "";
+      const lastAutomatedDispatchHash = session.metadata["lastAutomatedReviewDispatchHash"] ?? "";
 
       if (automatedFingerprint !== lastAutomatedFingerprint) {
         clearReactionTracker(session.id, automatedReactionKey);
